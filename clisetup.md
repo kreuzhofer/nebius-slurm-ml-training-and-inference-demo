@@ -1,0 +1,16 @@
+export NB_PROJECT_ID=project-e00msf0spr008gn2dev4fc
+
+tenant
+tenant-e00xp5r0908k7mwgj1
+
+export INSTALLATION_NAME=dkreuzh001
+
+
+TF_VAR_region: eu-north1
+TF_VAR_iam_tenant_id: tenant-e00xp5r0908k7mwgj1
+TF_VAR_iam_project_id: project-e00msf0spr008gn2dev4fc
+TF_VAR_o11y_iam_tenant_id: tenant-e00vyb5y1x5vqkzw5e
+TF_VAR_o11y_profile: soperator-telemetry
+TF_VAR_vpc_subnet_id: vpcsubnet-e00p43x2g1v9ht40yt
+TF_VAR_aws_access_key_id: 
+TFE_PARALLELISM: 20

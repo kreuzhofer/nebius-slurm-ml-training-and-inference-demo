@@ -1,0 +1,97 @@
+#cloud-config
+%{ if length(ssh_users) > 0 }
+users:
+%{ for user in ssh_users }
+  - name: "${user.name}"
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+%{ for key in user.public_keys }
+      - "${key}"
+%{ endfor }
+%{ endfor }
+%{ endif }
+
+%{ if length(nvidia_admin_conf_lines) > 0 }
+write_files:
+  - path: /etc/modprobe.d/nvidia_admin.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+%{ for line in nvidia_admin_conf_lines }
+      ${line}
+%{ endfor }
+  - path: /usr/local/bin/nvidia-conf-check.sh
+    owner: root:root
+    permissions: "0755"
+    content: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        reboot_guard="/var/lib/nvidia-conf.rebooted"
+        modprobe_conf="/etc/modprobe.d/nvidia_admin.conf"
+
+        log_prefix="[nvidia-conf]"
+        log() {
+            echo "$${log_prefix} $(date -u +%Y-%m-%dT%H:%M:%SZ) $*"
+        }
+
+        log "start"
+
+        if [ ! -f "$${modprobe_conf}" ]; then
+            log "status=skip reason=missing_conf file=$${modprobe_conf}"
+            exit 0
+        fi
+
+        desired_restrict_profiling="$(grep NVreg_RestrictProfilingToAdminUsers "$${modprobe_conf}"  | cut -d'=' -f2)"
+        desired_streammem="$(grep -Eo 'NVreg_EnableStreamMemOPs=[0-9]+' "$${modprobe_conf}" | tail -n1 | cut -d= -f2 || true)"
+        desired_peer_override="$(grep -Eo 'PeerMappingOverride=[0-9]+' "$${modprobe_conf}" | tail -n1 | cut -d= -f2 || true)"
+
+        log "desired_restrict_profiling=$${desired_restrict_profiling:-unknown} desired_streammem=$${desired_streammem:-unknown} desired_peer_override=$${desired_peer_override:-unknown}"
+
+        if [ ! -r /proc/driver/nvidia/params ]; then
+            log "status=skip reason=nvidia_params_missing"
+            exit 0
+        fi
+
+        current_restrict_profiling="$(grep -i RmProfilingAdminOnly /proc/driver/nvidia/params | cut -d':' -f2 | xargs)"
+        current_streammem="$(grep -iE '^EnableStreamMemOPs:' /proc/driver/nvidia/params | cut -d':' -f2 | xargs || true)"
+        current_peer_override="$(grep -Eo 'PeerMappingOverride=[0-9]+' /proc/driver/nvidia/params | cut -d= -f2 || true)"
+
+        log "current_restrict_profiling=$${current_restrict_profiling:-unknown} current_streammem=$${current_streammem:-unknown} current_peer_override=$${current_peer_override:-unknown}"
+
+        mismatch=0
+
+        if [ -n "$${desired_restrict_profiling}" ] && [ -n "$${current_restrict_profiling}" ] && [ "$${current_restrict_profiling}" != "$${desired_restrict_profiling}" ]; then
+            mismatch=1
+            log "mismatch=RmProfilingAdminOnly desired=$${desired_restrict_profiling} current=$${current_restrict_profiling}"
+        fi
+
+        if [ -n "$${desired_streammem}" ] && [ -n "$${current_streammem}" ] && [ "$${current_streammem}" != "$${desired_streammem}" ]; then
+            mismatch=1
+            log "mismatch=EnableStreamMemOPs desired=$${desired_streammem} current=$${current_streammem}"
+        fi
+
+        if [ -n "$${desired_peer_override}" ] && [ -n "$${current_peer_override}" ] && [ "$${current_peer_override}" != "$${desired_peer_override}" ]; then
+            mismatch=1
+            log "mismatch=PeerMappingOverride desired=$${desired_peer_override} current=$${current_peer_override}"
+        fi
+
+        if [ "$${mismatch}" -eq 1 ]; then
+            if [ -f "$${reboot_guard}" ]; then
+                log "action=skip reboot (guard exists)"
+            else
+                log "action=reboot (mismatch)"
+                mkdir -p "$(dirname "$${reboot_guard}")"
+                date -u +%Y-%m-%dT%H:%M:%SZ > "$${reboot_guard}"
+                shutdown -r +1 "cloud-init: apply /etc/modprobe.d/nvidia_admin.conf"
+            fi
+        else
+            log "status=ok"
+        fi
+
+        log "end"
+
+runcmd:
+  - [ bash, -lc, "/usr/local/bin/nvidia-conf-check.sh >> /var/log/nvidia-conf-check.log 2>&1" ]
+%{ endif }
