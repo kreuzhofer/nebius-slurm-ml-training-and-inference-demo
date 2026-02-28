@@ -13,6 +13,42 @@ Fine-tune Qwen3-8B and Qwen3-32B on the `sql-create-context` dataset (natural la
 - **Storage**: Shared **NFS** (Network File System — a networked disk visible to all nodes, `/mnt/data`, 2TB) for models/data + local **SSD** (`/mnt/local-data`, 1TB per node) for fast checkpoint I/O
 - **Software**: PyTorch 2.x with **FSDP** (Fully Sharded Data Parallel — splits model weights, gradients, and optimizer states across GPUs so each GPU only holds a fraction), HuggingFace Transformers, **torchrun** (PyTorch's launcher for starting one training process per GPU across multiple nodes)
 
+### Terraform Configuration (`terraform.tfvars`)
+
+The cluster is provisioned using Terraform with **Soperator** (Nebius's Slurm-on-Kubernetes operator). Before deploying, the following changes were made to `terraform.tfvars`:
+
+| Setting | Original Value | Changed To | Why |
+|---|---|---|---|
+| `production` | `true` | `false` | Setting `production = true` requires an `iam_merge_request_url` (an IAM approval workflow URL). Since this is a demo/non-production cluster, setting it to `false` bypasses that validation gate. |
+| `active_checks_scope` | `""` (empty) | `"prod_quick"` | Enables GPU and InfiniBand health checks after provisioning. These run short benchmarks (all-reduce, IB bandwidth, CUDA tests) on each node to verify hardware is healthy before accepting workloads. Takes ~10 minutes on H100 nodes. |
+| `backups_password` | `"password"` | (a real password) | The default placeholder is insecure. Changed to a proper encryption key for jail backup encryption. |
+
+The worker nodeset `size` was changed from `128` (the template default) to `2` — we only need 2 nodes (16 GPUs total) for this demo. The rest of the worker config was already correct:
+
+```hcl
+slurm_nodeset_workers = [{
+  name = "worker"
+  size = 2                              # 2 worker nodes
+  autoscaling = { enabled = false }     # fixed size, no scale-down
+  resource = {
+    platform = "gpu-h100-sxm"           # H100 SXM GPUs
+    preset   = "8gpu-128vcpu-1600gb"    # 8 GPUs, 128 vCPUs, 1.6TB RAM per node
+  }
+  gpu_cluster = {
+    infiniband_fabric = "fabric-2"      # InfiniBand network for cross-node GPU comms
+  }
+}]
+```
+
+Two shared filesystems were created manually in the Nebius Console before deploying Terraform, then attached to the cluster by referencing their IDs:
+
+- **`filestore_jail`** — the root shared filesystem (the **jail** — the base filesystem visible to all Slurm nodes).
+- **`filestore_jail_submounts`** — an additional shared filesystem mounted at `/mnt/data` inside the jail. This is where models, datasets, and outputs are stored.
+
+Both are referenced by ID in the tfvars (`existing = { id = "computefilesystem-..." }`) rather than having Terraform create them, since they were already provisioned via the console.
+
+Additionally, `node_local_jail_submounts` creates a 1TB local SSD (`/mnt/local-data`) on each worker node for fast checkpoint I/O. Other relevant settings: `slurm_shared_memory_size_gibibytes = 1024` (1 TiB shared memory per node) and `slurm_login_public_ip = true` (public IP on login nodes for SSH access).
+
 ### Ranks in Distributed Training
 
 Each GPU runs its own process, and every process is assigned a unique **rank** (0–15 across the job) and a **local rank** (0–7 within each node). These are set automatically by `torchrun`. All 16 ranks participate equally in training — **forward pass** (feeding data through the model to get a prediction), **backward pass** (computing how much each parameter contributed to the error, producing **gradients**), and **gradient synchronization** (averaging gradients across all GPUs so they agree on how to update the model) via FSDP. **Rank 0** (first GPU on the first node) acts as the leader for housekeeping tasks that should only happen once: logging, dataset preprocessing/caching, and saving the final model. It has no special role during the actual training computation.

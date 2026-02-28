@@ -5,6 +5,21 @@ Hi Roman,
 I've completed the Demo Day assignment. The environment is intact and ready for the demo session. Here's a summary of what was accomplished and what I ran into along the way.
 
 
+Terraform Configuration
+-----------------------
+
+The cluster was provisioned using the Soperator Terraform template. Key changes made to terraform.tfvars before deployment:
+
+- Set `production = false` (was `true`) to bypass the IAM merge request URL validation, since this is a non-production demo cluster.
+- Set `active_checks_scope = "prod_quick"` (was empty) to enable GPU and InfiniBand health checks after provisioning (~10 min).
+- Changed `backups_password` from the insecure placeholder `"password"` to a real encryption key.
+- Reduced `slurm_nodeset_workers` size from `128` (template default) to `2` — only 2 worker nodes needed for this demo.
+
+Two shared filesystems were created in the Nebius Console beforehand, then attached by referencing their IDs in the tfvars: the root jail filesystem and a submount at /mnt/data for models, datasets, and outputs. Each worker also gets a 1TB local SSD at /mnt/local-data for fast checkpoint I/O.
+
+Worker nodes: gpu-h100-sxm platform, 8gpu-128vcpu-1600gb preset, InfiniBand fabric-2, autoscaling disabled.
+
+
 What Was Accomplished
 ---------------------
 
@@ -72,12 +87,6 @@ Several issues came up during development, all related to distributed training a
 4. 32B full fine-tuning OOM — even with FSDP across 16x H100 80GB GPUs, AdamW optimizer states consumed too much memory for full fine-tuning of the 32B model. CPU offloading resolved the OOM but introduced an incompatibility between FSDP activation checkpointing and Qwen3's sliding window attention. Switched to LoRA, which trains only ~1% of parameters and eliminates the optimizer state bottleneck entirely.
 
 5. Multi-node Ray cluster networking — three issues had to be resolved for the 235B multi-node inference. First, hostname -I returned a link-local address (169.254.x.x) as the first IP, which isn't routable between nodes — fixed by filtering out link-local addresses when resolving the Ray head IP. Second, multiple srun steps within the sbatch script exhausted Slurm task slots, preventing the vLLM server from launching — fixed by adding --overlap to all srun commands. Third, vLLM defaulted to the multiprocessing executor backend, which only sees local GPUs — fixed by explicitly setting --distributed-executor-backend ray so vLLM discovers all 16 GPUs across both nodes.
-
-
-Terraform
----------
-
-The Terraform code used for deployment is attached separately.
 
 
 Environment Status
