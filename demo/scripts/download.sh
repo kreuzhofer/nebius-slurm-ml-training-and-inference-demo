@@ -72,6 +72,25 @@ else
     echo "Check progress: tail -f $DEMO_DIR/logs/download_32b.log"
 fi
 
+# --- Download Qwen3-235B-A22B (MoE model, ~480GB) ---
+echo ""
+echo "=== Downloading Qwen3-235B-A22B — this will take a long time ==="
+echo "    Starting in background."
+echo "    Check progress: tail -f $DEMO_DIR/logs/download_235b.log"
+echo ""
+
+if [ -d "$MODELS_DIR/Qwen3-235B-A22B" ] && [ "$(ls -A "$MODELS_DIR/Qwen3-235B-A22B"/*.safetensors 2>/dev/null)" ]; then
+    echo "Qwen3-235B-A22B already downloaded, skipping."
+else
+    nohup huggingface-cli download Qwen/Qwen3-235B-A22B \
+        --local-dir /mnt/data/demo/models/Qwen3-235B-A22B \
+        --local-dir-use-symlinks False \
+        > /mnt/data/demo/logs/download_235b.log 2>&1 &
+
+    echo "235B download started in background (PID: $!)"
+    echo "Check progress: tail -f $DEMO_DIR/logs/download_235b.log"
+fi
+
 echo ""
 echo "=== Downloads started ==="
 echo ""

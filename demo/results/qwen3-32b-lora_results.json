@@ -1,0 +1,910 @@
+{
+  "base_model": "/mnt/data/demo/models/Qwen3-32B",
+  "tuned_model": "/mnt/data/demo/output/qwen3-32b-sql",
+  "num_examples": 100,
+  "base_accuracy_pct": 3.0,
+  "tuned_accuracy_pct": 84.0,
+  "improvement_pct": 81.0,
+  "examples": [
+    {
+      "question": "When Essendon played away; where did they play?",
+      "schema": "CREATE TABLE table_name_50 (venue VARCHAR, away_team VARCHAR)",
+      "ground_truth": "SELECT venue FROM table_name_50 WHERE away_team = \"essendon\"",
+      "base_prediction": "SELECT venue FROM table_name_50 WHERE away_team = 'Essendon';",
+      "tuned_prediction": "SELECT venue FROM table_name_50 WHERE away_team = \"essendon\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the lowest numbered game against Phoenix with a record of 29-17?",
+      "schema": "CREATE TABLE table_name_61 (game INTEGER, opponent VARCHAR, record VARCHAR)",
+      "ground_truth": "SELECT MIN(game) FROM table_name_61 WHERE opponent = \"phoenix\" AND record = \"29-17\"",
+      "base_prediction": "SELECT game\nFROM table_name_61\nWHERE opponent = 'Phoenix' AND record = '29-17'\nORDER BY game ASC\nLIMIT 1;",
+      "tuned_prediction": "SELECT MIN(game) FROM table_name_61 WHERE opponent = \"phoenix\" AND record = \"29-17\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Who did the Texan's play on Week 4?",
+      "schema": "CREATE TABLE table_name_37 (opponent VARCHAR, week VARCHAR)",
+      "ground_truth": "SELECT opponent FROM table_name_37 WHERE week = \"4\"",
+      "base_prediction": "SELECT opponent FROM table_name_37 WHERE week = 'Week 4' AND opponent LIKE '%Texans%';",
+      "tuned_prediction": "SELECT opponent FROM table_name_37 WHERE week = 4",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "Which Points have Touchdowns larger than 0, and an Extra points smaller than 0?",
+      "schema": "CREATE TABLE table_name_70 (points INTEGER, touchdowns VARCHAR, extra_points VARCHAR)",
+      "ground_truth": "SELECT SUM(points) FROM table_name_70 WHERE touchdowns > 0 AND extra_points < 0",
+      "base_prediction": "SELECT points FROM table_name_70 WHERE touchdowns > '0' AND extra_points < '0';",
+      "tuned_prediction": "SELECT AVG(points) FROM table_name_70 WHERE touchdowns > 0 AND extra_points < 0",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "What is the name of the player who is Sco and moving to greenock morton in the summer?",
+      "schema": "CREATE TABLE table_name_83 (name VARCHAR, moving_to VARCHAR, nat VARCHAR, transfer_window VARCHAR)",
+      "ground_truth": "SELECT name FROM table_name_83 WHERE nat = \"sco\" AND transfer_window = \"summer\" AND moving_to = \"greenock morton\"",
+      "base_prediction": "SELECT name FROM table_name_83 WHERE name = 'Sco' AND moving_to = 'greenock morton' AND transfer_window = 'summer';",
+      "tuned_prediction": "SELECT name FROM table_name_83 WHERE nat = \"sco\" AND transfer_window = \"summer\" AND moving_to = \"greenock morton\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Of all the contestants who got voted, what is the contestant number and name of the contestant who got least votes?",
+      "schema": "CREATE TABLE votes (contestant_number VARCHAR); CREATE TABLE contestants (contestant_number VARCHAR, contestant_name VARCHAR)",
+      "ground_truth": "SELECT T1.contestant_number, T1.contestant_name FROM contestants AS T1 JOIN votes AS T2 ON T1.contestant_number = T2.contestant_number GROUP BY T1.contestant_number ORDER BY COUNT(*) LIMIT 1",
+      "base_prediction": "SELECT v.contestant_number, c.contestant_name\nFROM votes v\nJOIN contestants c ON v.contestant_number = c.contestant_number\nGROUP BY v.contestant_number, c.contestant_name\nORDER BY COUNT(*) ASC\nLIMIT 1;",
+      "tuned_prediction": "SELECT T1.contestant_number, T2.contestant_name FROM votes AS T1 JOIN contestants AS T2 ON T1.contestant_number = T2.contestant_number GROUP BY T1.contestant_number ORDER BY COUNT(*) LIMIT 1",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "Which venue had the result 7-1?",
+      "schema": "CREATE TABLE table_name_50 (venue VARCHAR, result VARCHAR)",
+      "ground_truth": "SELECT venue FROM table_name_50 WHERE result = \"7-1\"",
+      "base_prediction": "SELECT venue FROM table_name_50 WHERE result = '7-1';",
+      "tuned_prediction": "SELECT venue FROM table_name_50 WHERE result = \"7-1\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What did the tournament that got an A in 1945 get in 1949?",
+      "schema": "CREATE TABLE table_name_22 (Id VARCHAR)",
+      "ground_truth": "SELECT 1949 FROM table_name_22 WHERE 1945 = \"a\"",
+      "base_prediction": "SELECT * FROM table_name_22 WHERE Id = 'A';",
+      "tuned_prediction": "SELECT 1949 FROM table_name_22 WHERE 1945 = \"a\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Find the states where have the colleges whose enrollments are less than the largest size.",
+      "schema": "CREATE TABLE college (state VARCHAR, enr INTEGER)",
+      "ground_truth": "SELECT DISTINCT state FROM college WHERE enr < (SELECT MAX(enr) FROM college)",
+      "base_prediction": "```sql\nSELECT DISTINCT state\nFROM college\nWHERE enr < (SELECT MAX(enr) FROM college);\n```",
+      "tuned_prediction": "SELECT state FROM college WHERE enr < (SELECT MAX(enr) FROM college)",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "What is the name of the episode that had 9.89 million U.S. viewers?",
+      "schema": "CREATE TABLE table_24648983_1 (title VARCHAR, us_viewers__million_ VARCHAR)",
+      "ground_truth": "SELECT title FROM table_24648983_1 WHERE us_viewers__million_ = \"9.89\"",
+      "base_prediction": "SELECT title FROM table_24648983_1 WHERE us_viewers__million_ = '9.89';",
+      "tuned_prediction": "SELECT title FROM table_24648983_1 WHERE us_viewers__million_ = \"9.89\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What are the names of the workshop groups that have bookings with status code \"stop\"?",
+      "schema": "CREATE TABLE Bookings (Workshop_Group_ID VARCHAR, Status_Code VARCHAR); CREATE TABLE Drama_Workshop_Groups (Store_Name VARCHAR, Workshop_Group_ID VARCHAR)",
+      "ground_truth": "SELECT T2.Store_Name FROM Bookings AS T1 JOIN Drama_Workshop_Groups AS T2 ON T1.Workshop_Group_ID = T2.Workshop_Group_ID WHERE T1.Status_Code = \"stop\"",
+      "base_prediction": "SELECT DISTINCT dwg.Store_Name\nFROM Drama_Workshop_Groups dwg\nJOIN Bookings b ON dwg.Workshop_Group_ID = b.Workshop_Group_ID\nWHERE b.Status_Code = 'stop';",
+      "tuned_prediction": "SELECT T1.Store_Name FROM Drama_Workshop_Groups AS T1 JOIN Bookings AS T2 ON T1.Workshop_Group_ID = T2.Workshop_Group_ID WHERE T2.Status_Code = \"stop\"",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "Where was the opponent Germany?",
+      "schema": "CREATE TABLE table_name_96 (location VARCHAR, opponenent VARCHAR)",
+      "ground_truth": "SELECT location FROM table_name_96 WHERE opponenent = \"germany\"",
+      "base_prediction": "SELECT location FROM table_name_96 WHERE opponenent = 'Germany';",
+      "tuned_prediction": "SELECT location FROM table_name_96 WHERE opponenent = \"germany\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Name the candidates for result of lost renomination democratic loss",
+      "schema": "CREATE TABLE table_1342149_24 (candidates VARCHAR, result VARCHAR)",
+      "ground_truth": "SELECT candidates FROM table_1342149_24 WHERE result = \"Lost renomination Democratic loss\"",
+      "base_prediction": "SELECT candidates FROM table_1342149_24 WHERE result = 'lost renomination democratic loss'",
+      "tuned_prediction": "SELECT candidates FROM table_1342149_24 WHERE result = \"Lost renomination Democratic loss\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the number of party in the arkansas 1 district",
+      "schema": "CREATE TABLE table_1341930_5 (party VARCHAR, district VARCHAR)",
+      "ground_truth": "SELECT COUNT(party) FROM table_1341930_5 WHERE district = \"Arkansas 1\"",
+      "base_prediction": "SELECT COUNT(DISTINCT party) FROM table_1341930_5 WHERE district = 'arkansas 1';",
+      "tuned_prediction": "SELECT COUNT(party) FROM table_1341930_5 WHERE district = \"Arkansas 1\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "How many alt names does 1964-011a have?",
+      "schema": "CREATE TABLE table_12141496_1 (alt_name VARCHAR, id VARCHAR)",
+      "ground_truth": "SELECT COUNT(alt_name) FROM table_12141496_1 WHERE id = \"1964-011A\"",
+      "base_prediction": "SELECT COUNT(*) FROM table_12141496_1 WHERE id = '1964-011a';",
+      "tuned_prediction": "SELECT COUNT(alt_name) FROM table_12141496_1 WHERE id = \"1964-011A\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Who is the opponent of the game played on November 20, 1995?",
+      "schema": "CREATE TABLE table_name_66 (opponent VARCHAR, date VARCHAR)",
+      "ground_truth": "SELECT opponent FROM table_name_66 WHERE date = \"november 20, 1995\"",
+      "base_prediction": "SELECT opponent FROM table_name_66 WHERE date = 'November 20, 1995';",
+      "tuned_prediction": "SELECT opponent FROM table_name_66 WHERE date = \"november 20, 1995\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the position of tickets sold/available when the sellout is 82%?",
+      "schema": "CREATE TABLE table_16331025_2 (tickets_sold___available VARCHAR, sellout___percentage_ VARCHAR)",
+      "ground_truth": "SELECT COUNT(tickets_sold___available) FROM table_16331025_2 WHERE sellout___percentage_ = \"82%\"",
+      "base_prediction": "SELECT tickets_sold___available FROM table_16331025_2 WHERE sellout___percentage_ = '82%';",
+      "tuned_prediction": "SELECT tickets_sold___available FROM table_16331025_2 WHERE sellout___percentage_ = \"82%\"",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "Which College/Junior/Club Team (League) did the player in round 6 play for?",
+      "schema": "CREATE TABLE table_name_98 (college_junior_club_team__league_ VARCHAR, round VARCHAR)",
+      "ground_truth": "SELECT college_junior_club_team__league_ FROM table_name_98 WHERE round = \"6\"",
+      "base_prediction": "SELECT college_junior_club_team__league_ FROM table_name_98 WHERE round = '6';",
+      "tuned_prediction": "SELECT college_junior_club_team__league_ FROM table_name_98 WHERE round = 6",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "How many in the introduced section had Fokker as a manufacturer, a quantity of 5, and retired later than 1999?",
+      "schema": "CREATE TABLE table_name_94 (introduced INTEGER, retired VARCHAR, manufacturer VARCHAR, quantity VARCHAR)",
+      "ground_truth": "SELECT SUM(introduced) FROM table_name_94 WHERE manufacturer = \"fokker\" AND quantity = 5 AND retired > 1999",
+      "base_prediction": "SELECT COUNT(*) FROM table_name_94\nWHERE manufacturer = 'Fokker' AND quantity = '5' AND retired > 1999;",
+      "tuned_prediction": "SELECT SUM(introduced) FROM table_name_94 WHERE manufacturer = \"fokker\" AND quantity = 5 AND retired > 1999",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Where was the audition venue where Peninha was the guest fourth judge?",
+      "schema": "CREATE TABLE table_27615445_1 (audition_venue VARCHAR, guest_fourth_judge VARCHAR)",
+      "ground_truth": "SELECT audition_venue FROM table_27615445_1 WHERE guest_fourth_judge = \"Peninha\"",
+      "base_prediction": "SELECT audition_venue FROM table_27615445_1 WHERE guest_fourth_judge = 'Penha';",
+      "tuned_prediction": "SELECT audition_venue FROM table_27615445_1 WHERE guest_fourth_judge = \"Penha\"",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "Who was the runner-up in the Memorial Tournament?",
+      "schema": "CREATE TABLE table_1602858_1 (runner_s__up VARCHAR, tournament VARCHAR)",
+      "ground_truth": "SELECT runner_s__up FROM table_1602858_1 WHERE tournament = \"Memorial tournament\"",
+      "base_prediction": "SELECT runner_s__up FROM table_1602858_1 WHERE tournament = 'Memorial Tournament';",
+      "tuned_prediction": "SELECT runner_s__up FROM table_1602858_1 WHERE tournament = \"Memorial Tournament\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the number of bonus points when there are 2 drawn and the points against is 599?",
+      "schema": "CREATE TABLE table_name_83 (bonus_points VARCHAR, drawn VARCHAR, points_against VARCHAR)",
+      "ground_truth": "SELECT bonus_points FROM table_name_83 WHERE drawn = \"2\" AND points_against = \"599\"",
+      "base_prediction": "SELECT bonus_points FROM table_name_83 WHERE drawn = '2' AND points_against = '599';",
+      "tuned_prediction": "SELECT bonus_points FROM table_name_83 WHERE drawn = \"2\" AND points_against = \"599\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Which game was a Platformer?",
+      "schema": "CREATE TABLE table_name_90 (game VARCHAR, genre VARCHAR)",
+      "ground_truth": "SELECT game FROM table_name_90 WHERE genre = \"platformer\"",
+      "base_prediction": "SELECT game FROM table_name_90 WHERE genre = 'Platformer';",
+      "tuned_prediction": "SELECT game FROM table_name_90 WHERE genre = \"platformer\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Who was the individual in the event of 1998 Pokljuka?",
+      "schema": "CREATE TABLE table_name_33 (individual VARCHAR, event VARCHAR)",
+      "ground_truth": "SELECT individual FROM table_name_33 WHERE event = \"1998 pokljuka\"",
+      "base_prediction": "SELECT individual FROM table_name_33 WHERE event = '1998 Pokljuka';",
+      "tuned_prediction": "SELECT individual FROM table_name_33 WHERE event = \"1998 pokljuka\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What's the average draft pick number from Carson-Newman College before Round 7?",
+      "schema": "CREATE TABLE table_name_21 (pick__number INTEGER, college VARCHAR, round VARCHAR)",
+      "ground_truth": "SELECT AVG(pick__number) FROM table_name_21 WHERE college = \"carson-newman\" AND round < 7",
+      "base_prediction": "SELECT AVG(pick__number) FROM table_name_21 WHERE college = 'Carson-Newman College' AND round < '7';",
+      "tuned_prediction": "SELECT AVG(pick__number) FROM table_name_21 WHERE college = \"carson-newman\" AND round < 7",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Who was the spouse of the consort who was born as rania al yassin?",
+      "schema": "CREATE TABLE table_name_27 (spouse_to VARCHAR, born_as VARCHAR)",
+      "ground_truth": "SELECT spouse_to FROM table_name_27 WHERE born_as = \"rania al yassin\"",
+      "base_prediction": "SELECT spouse_to FROM table_name_27 WHERE born_as = 'rania al yassin';",
+      "tuned_prediction": "SELECT spouse_to FROM table_name_27 WHERE born_as = \"rania al yassin\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "How many figures for wickets when the strike rate is 54.0?",
+      "schema": "CREATE TABLE table_19662262_6 (wickets VARCHAR, strike_rate VARCHAR)",
+      "ground_truth": "SELECT COUNT(wickets) FROM table_19662262_6 WHERE strike_rate = \"54.0\"",
+      "base_prediction": "SELECT COUNT(*) FROM table_19662262_6 WHERE strike_rate = '54.0';",
+      "tuned_prediction": "SELECT COUNT(wickets) FROM table_19662262_6 WHERE strike_rate = \"54.0\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Who's the Communist ticket with an American Labor ticket of joseph v. o'leary?",
+      "schema": "CREATE TABLE table_name_49 (communist_ticket VARCHAR, american_labor_ticket VARCHAR)",
+      "ground_truth": "SELECT communist_ticket FROM table_name_49 WHERE american_labor_ticket = \"joseph v. o'leary\"",
+      "base_prediction": "SELECT communist_ticket FROM table_name_49 WHERE american_labor_ticket = 'joseph v. o''leary';",
+      "tuned_prediction": "SELECT communist_ticket FROM table_name_49 WHERE american_labor_ticket = \"joseph v. o'leary\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the HDI 2011 of the country with a DI 2011 of 7.63?",
+      "schema": "CREATE TABLE table_name_54 (hdi_2011 VARCHAR, di_2011 VARCHAR)",
+      "ground_truth": "SELECT hdi_2011 FROM table_name_54 WHERE di_2011 = \"7.63\"",
+      "base_prediction": "SELECT hdi_2011 FROM table_name_54 WHERE di_2011 = '7.63';",
+      "tuned_prediction": "SELECT hdi_2011 FROM table_name_54 WHERE di_2011 = \"7.63\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "How much Against has Draws of 2, and Losses smaller than 4?",
+      "schema": "CREATE TABLE table_name_17 (against INTEGER, draws VARCHAR, losses VARCHAR)",
+      "ground_truth": "SELECT SUM(against) FROM table_name_17 WHERE draws = 2 AND losses < 4",
+      "base_prediction": "SELECT against FROM table_name_17 WHERE draws = '2' AND losses < '4'",
+      "tuned_prediction": "SELECT SUM(against) FROM table_name_17 WHERE draws = 2 AND losses < 4",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What was Galatasaray score when when he won in 1990 and Trabzonspor was the runner-up?",
+      "schema": "CREATE TABLE table_name_24 (score VARCHAR, year VARCHAR, winners VARCHAR, runners_up VARCHAR)",
+      "ground_truth": "SELECT score FROM table_name_24 WHERE winners = \"galatasaray\" AND runners_up = \"trabzonspor\" AND year = 1990",
+      "base_prediction": "SELECT score FROM table_name_24 WHERE year = '1990' AND winners = 'Galatasaray' AND runners_up = 'Trabzonspor';",
+      "tuned_prediction": "SELECT score FROM table_name_24 WHERE winners = \"galatasaray\" AND runners_up = \"trabzonspor\" AND year = \"1990\"",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "Who was the runner-up of the competition played at Minikahda Club?",
+      "schema": "CREATE TABLE table_name_55 (runner_up VARCHAR, venue VARCHAR)",
+      "ground_truth": "SELECT runner_up FROM table_name_55 WHERE venue = \"minikahda club\"",
+      "base_prediction": "SELECT runner_up FROM table_name_55 WHERE venue = 'Minikahda Club';",
+      "tuned_prediction": "SELECT runner_up FROM table_name_55 WHERE venue = \"minikahda club\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the catalog number for the Grilled Cheese label?",
+      "schema": "CREATE TABLE table_name_33 (catalog VARCHAR, label VARCHAR)",
+      "ground_truth": "SELECT catalog FROM table_name_33 WHERE label = \"grilled cheese\"",
+      "base_prediction": "SELECT catalog FROM table_name_33 WHERE label = 'Grilled Cheese';",
+      "tuned_prediction": "SELECT catalog FROM table_name_33 WHERE label = \"grilled cheese\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Which opponent had the result of W 24-14?",
+      "schema": "CREATE TABLE table_name_64 (opponent VARCHAR, result VARCHAR)",
+      "ground_truth": "SELECT opponent FROM table_name_64 WHERE result = \"w 24-14\"",
+      "base_prediction": "SELECT opponent FROM table_name_64 WHERE result = 'W 24-14';",
+      "tuned_prediction": "SELECT opponent FROM table_name_64 WHERE result = \"w 24-14\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the newest season?",
+      "schema": "CREATE TABLE table_2140071_7 (season INTEGER)",
+      "ground_truth": "SELECT MAX(season) FROM table_2140071_7",
+      "base_prediction": "SELECT MAX(season) FROM table_2140071_7;",
+      "tuned_prediction": "SELECT MAX(season) FROM table_2140071_7",
+      "base_correct": true,
+      "tuned_correct": true
+    },
+    {
+      "question": "Which Surface has an Opponent(s) of anna-lena gr\u00f6nefeld tatjana malek?",
+      "schema": "CREATE TABLE table_name_8 (surface VARCHAR, opponent_s_ VARCHAR)",
+      "ground_truth": "SELECT surface FROM table_name_8 WHERE opponent_s_ = \"anna-lena gr\u00f6nefeld tatjana malek\"",
+      "base_prediction": "SELECT surface FROM table_name_8 WHERE opponent_s_ = 'anna-lena gr\u00f6nefeld tatjana malek';",
+      "tuned_prediction": "SELECT surface FROM table_name_8 WHERE opponent_s_ = \"anna-lena gr\u00f6nefeld tatjana malek\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "In what TV season did the 3rd season air?",
+      "schema": "CREATE TABLE table_1348989_2 (TV VARCHAR, season VARCHAR)",
+      "ground_truth": "SELECT TV AS season FROM table_1348989_2 WHERE season = \"3rd\"",
+      "base_prediction": "SELECT TV FROM table_1348989_2 WHERE season = '3rd';",
+      "tuned_prediction": "SELECT TV AS season FROM table_1348989_2 WHERE season = \"3rd\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Who ran the fastest lap in the team that competed in Zolder, in which Ferrari was the Constructor?",
+      "schema": "CREATE TABLE table_name_39 (fastest_lap VARCHAR, constructor VARCHAR, location VARCHAR)",
+      "ground_truth": "SELECT fastest_lap FROM table_name_39 WHERE constructor = \"ferrari\" AND location = \"zolder\"",
+      "base_prediction": "SELECT fastest_lap \nFROM table_name_39 \nWHERE constructor = 'Ferrari' AND location = 'Zolder';",
+      "tuned_prediction": "SELECT fastest_lap FROM table_name_39 WHERE constructor = \"ferrari\" AND location = \"zolder\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What was the NBA draft status for Northeast High School?",
+      "schema": "CREATE TABLE table_name_7 (nba_draft VARCHAR, school VARCHAR)",
+      "ground_truth": "SELECT nba_draft FROM table_name_7 WHERE school = \"northeast high school\"",
+      "base_prediction": "SELECT nba_draft FROM table_name_7 WHERE school = 'Northeast High School';",
+      "tuned_prediction": "SELECT nba_draft FROM table_name_7 WHERE school = \"northeast high school\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the high Population (total) from 1976 with a (Barcaldine) smaller than 1,780?",
+      "schema": "CREATE TABLE table_name_96 (population__total_ INTEGER, year VARCHAR, _barcaldine_ VARCHAR)",
+      "ground_truth": "SELECT MAX(population__total_) FROM table_name_96 WHERE year = 1976 AND _barcaldine_ < 1 OFFSET 780",
+      "base_prediction": "SELECT MAX(population__total_) \nFROM table_name_96 \nWHERE year = '1976' AND _barcaldine_ < 1780;",
+      "tuned_prediction": "SELECT MAX(population__total_) FROM table_name_96 WHERE year = 1976 AND _barcaldine_ < 1 OFFSET 780",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What 1953 has 2 as a 1949, and 3 as 1952?",
+      "schema": "CREATE TABLE table_name_48 (Id VARCHAR)",
+      "ground_truth": "SELECT 1953 FROM table_name_48 WHERE 1949 = \"2\" AND 1952 = \"3\"",
+      "base_prediction": "SELECT * FROM table_name_48 WHERE Id = '1953' AND '2' = '1949' AND '3' = '1952';",
+      "tuned_prediction": "SELECT 1953 FROM table_name_48 WHERE 1949 = \"2\" AND 1952 = \"3\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the total number of losses for the over 30 games played?",
+      "schema": "CREATE TABLE table_name_50 (losses VARCHAR, played INTEGER)",
+      "ground_truth": "SELECT COUNT(losses) FROM table_name_50 WHERE played > 30",
+      "base_prediction": "SELECT SUM(CAST(losses AS INTEGER)) FROM table_name_50 WHERE played > 30;",
+      "tuned_prediction": "SELECT COUNT(losses) FROM table_name_50 WHERE played > 30",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Show names for artists without any exhibition.",
+      "schema": "CREATE TABLE artist (name VARCHAR, artist_id VARCHAR); CREATE TABLE exhibition (name VARCHAR, artist_id VARCHAR)",
+      "ground_truth": "SELECT name FROM artist WHERE NOT artist_id IN (SELECT artist_id FROM exhibition)",
+      "base_prediction": "SELECT a.name\nFROM artist a\nLEFT JOIN exhibition e ON a.artist_id = e.artist_id\nWHERE e.artist_id IS NULL;",
+      "tuned_prediction": "SELECT name FROM artist WHERE NOT artist_id IN (SELECT artist_id FROM exhibition)",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What are the countries of mountains with height bigger than 5000?",
+      "schema": "CREATE TABLE mountain (Country VARCHAR, Height INTEGER)",
+      "ground_truth": "SELECT Country FROM mountain WHERE Height > 5000",
+      "base_prediction": "SELECT Country FROM mountain WHERE Height > 5000;",
+      "tuned_prediction": "SELECT Country FROM mountain WHERE Height > 5000",
+      "base_correct": true,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the highest Money ( \u00a3 ), when Player is \"Peter Hedblom\"?",
+      "schema": "CREATE TABLE table_name_95 (money___ INTEGER, player VARCHAR)",
+      "ground_truth": "SELECT MAX(money___) AS \u00a3__ FROM table_name_95 WHERE player = \"peter hedblom\"",
+      "base_prediction": "SELECT MAX(money___) FROM table_name_95 WHERE player = 'Peter Hedblom';",
+      "tuned_prediction": "SELECT MAX(money___) AS \u00a3__ FROM table_name_95 WHERE player = \"peter hedblom\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "When was the appointment date for VFL Wolfsburg?",
+      "schema": "CREATE TABLE table_name_72 (date_of_appointment VARCHAR, team VARCHAR)",
+      "ground_truth": "SELECT date_of_appointment FROM table_name_72 WHERE team = \"vfl wolfsburg\"",
+      "base_prediction": "SELECT date_of_appointment FROM table_name_72 WHERE team = 'VFL Wolfsburg';",
+      "tuned_prediction": "SELECT date_of_appointment FROM table_name_72 WHERE team = \"vfl wolfsburg\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What language is the moviein that is on UMP movies network through Sky service?",
+      "schema": "CREATE TABLE table_name_87 (language VARCHAR, network VARCHAR, genre VARCHAR, service VARCHAR)",
+      "ground_truth": "SELECT language FROM table_name_87 WHERE genre = \"movies\" AND service = \"sky\" AND network = \"ump movies\"",
+      "base_prediction": "SELECT language FROM table_name_87 WHERE network = 'UMP movies' AND service = 'Sky';",
+      "tuned_prediction": "SELECT language FROM table_name_87 WHERE genre = \"movie\" AND service = \"sky\" AND network = \"ump movies\"",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "What Location has a Design flow (LPM) smaller than 1900, and a Construction Start of 2006 june?",
+      "schema": "CREATE TABLE table_name_40 (location VARCHAR, design_flow__lpm_ VARCHAR, construction_start VARCHAR)",
+      "ground_truth": "SELECT location FROM table_name_40 WHERE design_flow__lpm_ < 1900 AND construction_start = \"2006 june\"",
+      "base_prediction": "SELECT location\nFROM table_name_40\nWHERE design_flow__lpm_ < 1900\n  AND construction_start = '2006 june';",
+      "tuned_prediction": "SELECT location FROM table_name_40 WHERE design_flow__lpm_ < 1900 AND construction_start = \"2006 june\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What high definition television options are available for Italia 1?",
+      "schema": "CREATE TABLE table_15887683_1 (hdtv VARCHAR, television_service VARCHAR)",
+      "ground_truth": "SELECT hdtv FROM table_15887683_1 WHERE television_service = \"Italia 1\"",
+      "base_prediction": "SELECT hdtv FROM table_15887683_1 WHERE television_service = 'Italia 1';",
+      "tuned_prediction": "SELECT hdtv FROM table_15887683_1 WHERE television_service = \"Italia 1\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Which suffix has the prefix of isothiocyanato- (-ncs)?",
+      "schema": "CREATE TABLE table_name_17 (suffix VARCHAR, prefix VARCHAR)",
+      "ground_truth": "SELECT suffix FROM table_name_17 WHERE prefix = \"isothiocyanato- (-ncs)\"",
+      "base_prediction": "SELECT suffix FROM table_name_17 WHERE prefix = 'isothiocyanato- (-ncs)';",
+      "tuned_prediction": "SELECT suffix FROM table_name_17 WHERE prefix = \"isothiocyanato- (-ncs)\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the enrollment at the school of Hamilton community?",
+      "schema": "CREATE TABLE table_name_3 (enrollment INTEGER, school VARCHAR)",
+      "ground_truth": "SELECT AVG(enrollment) FROM table_name_3 WHERE school = \"hamilton community\"",
+      "base_prediction": "SELECT enrollment FROM table_name_3 WHERE school = 'Hamilton community';",
+      "tuned_prediction": "SELECT SUM(enrollment) FROM table_name_3 WHERE school = \"hamilton community\"",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "What is the date of return for the program for the program \"Big Brother\"?",
+      "schema": "CREATE TABLE table_29566606_11 (date_of_return VARCHAR, programme VARCHAR)",
+      "ground_truth": "SELECT date_of_return FROM table_29566606_11 WHERE programme = \"Big Brother\"",
+      "base_prediction": "SELECT date_of_return FROM table_29566606_11 WHERE programme = 'Big Brother';",
+      "tuned_prediction": "SELECT date_of_return FROM table_29566606_11 WHERE programme = \"Big Brother\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "On what date was Patty Fendick an opponent?",
+      "schema": "CREATE TABLE table_name_95 (date VARCHAR, opponent VARCHAR)",
+      "ground_truth": "SELECT date FROM table_name_95 WHERE opponent = \"patty fendick\"",
+      "base_prediction": "SELECT date FROM table_name_95 WHERE opponent = 'Patty Fendick';",
+      "tuned_prediction": "SELECT date FROM table_name_95 WHERE opponent = \"patty fendick\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What position did the player who was with the grizzlies from 2007-2009 play?",
+      "schema": "CREATE TABLE table_name_89 (position VARCHAR, years_for_grizzlies VARCHAR)",
+      "ground_truth": "SELECT position FROM table_name_89 WHERE years_for_grizzlies = \"2007-2009\"",
+      "base_prediction": "SELECT position FROM table_name_89 WHERE years_for_grizzlies = '2007-2009';",
+      "tuned_prediction": "SELECT position FROM table_name_89 WHERE years_for_grizzlies = \"2007-2009\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "When do all the researcher role staff start to work, and when do they stop working?",
+      "schema": "CREATE TABLE Project_Staff (date_from VARCHAR, date_to VARCHAR, role_code VARCHAR)",
+      "ground_truth": "SELECT date_from, date_to FROM Project_Staff WHERE role_code = 'researcher'",
+      "base_prediction": "SELECT date_from, date_to\nFROM Project_Staff\nWHERE role_code = 'researcher';",
+      "tuned_prediction": "SELECT date_from, date_to FROM Project_Staff WHERE role_code = \"Researcher\"",
+      "base_correct": true,
+      "tuned_correct": false
+    },
+    {
+      "question": "what is the analog type for wxmi?",
+      "schema": "CREATE TABLE table_name_9 (analog VARCHAR, callsign VARCHAR)",
+      "ground_truth": "SELECT analog FROM table_name_9 WHERE callsign = \"wxmi\"",
+      "base_prediction": "SELECT analog FROM table_name_9 WHERE callsign = 'wxmi';",
+      "tuned_prediction": "SELECT analog FROM table_name_9 WHERE callsign = \"wxmi\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "what's the\u00a0record\u00a0with\u00a0result\u00a0being w 21\u20137",
+      "schema": "CREATE TABLE table_14951643_1 (record VARCHAR, result VARCHAR)",
+      "ground_truth": "SELECT record FROM table_14951643_1 WHERE result = \"W 21\u20137\"",
+      "base_prediction": "SELECT record FROM table_14951643_1 WHERE result = 'w 21\u20137';",
+      "tuned_prediction": "SELECT record FROM table_14951643_1 WHERE result = \"W 21\u20137\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the market income per capita in a county where the status is distressed and the unemployment rate is at 10.5%? ",
+      "schema": "CREATE TABLE table_22815568_3 (market_income_per_capita VARCHAR, status VARCHAR, unemployment_rate VARCHAR)",
+      "ground_truth": "SELECT market_income_per_capita FROM table_22815568_3 WHERE status = \"Distressed\" AND unemployment_rate = \"10.5%\"",
+      "base_prediction": "SELECT market_income_per_capita FROM table_22815568_3 WHERE status = 'distressed' AND unemployment_rate = '10.5%';",
+      "tuned_prediction": "SELECT market_income_per_capita FROM table_22815568_3 WHERE status = \"Distressed\" AND unemployment_rate = \"10.5%\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is Date, when Opponent in Final is \"Guy Forget\"?",
+      "schema": "CREATE TABLE table_name_64 (date VARCHAR, opponent_in_final VARCHAR)",
+      "ground_truth": "SELECT date FROM table_name_64 WHERE opponent_in_final = \"guy forget\"",
+      "base_prediction": "SELECT date FROM table_name_64 WHERE opponent_in_final = 'Guy Forget';",
+      "tuned_prediction": "SELECT date FROM table_name_64 WHERE opponent_in_final = \"guy forget\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Name the time for saturday 4 march 1995",
+      "schema": "CREATE TABLE table_16388047_1 (time VARCHAR, date VARCHAR)",
+      "ground_truth": "SELECT time FROM table_16388047_1 WHERE date = \"Saturday 4 March 1995\"",
+      "base_prediction": "SELECT time FROM table_16388047_1 WHERE date = '1995-03-04';",
+      "tuned_prediction": "SELECT time FROM table_16388047_1 WHERE date = \"Saturday 4 March 1995\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What was the lowest win% with an away score of 3-2 in 2011 season?",
+      "schema": "CREATE TABLE table_name_53 (win__percentage INTEGER, away VARCHAR, season VARCHAR)",
+      "ground_truth": "SELECT MIN(win__percentage) FROM table_name_53 WHERE away = \"3-2\" AND season = \"2011\"",
+      "base_prediction": "SELECT MIN(win__percentage) FROM table_name_53 WHERE away = '3-2' AND season = '2011';",
+      "tuned_prediction": "SELECT MIN(win__percentage) FROM table_name_53 WHERE away = \"3-2\" AND season = \"2011\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "how many division  did not qualify for u.s. open cup in 2003",
+      "schema": "CREATE TABLE table_1046170_5 (division VARCHAR, us_open_cup VARCHAR, year VARCHAR)",
+      "ground_truth": "SELECT division FROM table_1046170_5 WHERE us_open_cup = \"Did Not Qualify\" AND year = 2003",
+      "base_prediction": "SELECT COUNT(DISTINCT division) \nFROM table_1046170_5 \nWHERE us_open_cup IS NULL AND year = '2003';",
+      "tuned_prediction": "SELECT COUNT(division) FROM table_1046170_5 WHERE us_open_cup = \"Did not qualify\" AND year = 2003",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "What album is 4:53 long?",
+      "schema": "CREATE TABLE table_name_74 (album VARCHAR, length VARCHAR)",
+      "ground_truth": "SELECT album FROM table_name_74 WHERE length = \"4:53\"",
+      "base_prediction": "SELECT album FROM table_name_74 WHERE length = '4:53';",
+      "tuned_prediction": "SELECT album FROM table_name_74 WHERE length = \"4:53\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What are the formats associated with the Atlantic Records label, catalog number 512336?",
+      "schema": "CREATE TABLE table_name_15 (format_s_ VARCHAR, label VARCHAR, catalog VARCHAR)",
+      "ground_truth": "SELECT format_s_ FROM table_name_15 WHERE label = \"atlantic records\" AND catalog = \"512336\"",
+      "base_prediction": "SELECT format_s_ \nFROM table_name_15 \nWHERE label = 'Atlantic Records' AND catalog = '512336';",
+      "tuned_prediction": "SELECT format_s_ FROM table_name_15 WHERE label = \"atlantic records\" AND catalog = \"512336\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Name the number of naming for anomic aphasia",
+      "schema": "CREATE TABLE table_2088_1 (naming VARCHAR, type_of_aphasia VARCHAR)",
+      "ground_truth": "SELECT COUNT(naming) FROM table_2088_1 WHERE type_of_aphasia = \"Anomic aphasia\"",
+      "base_prediction": "SELECT COUNT(naming) FROM table_2088_1 WHERE type_of_aphasia = 'anomic';",
+      "tuned_prediction": "SELECT COUNT(naming) FROM table_2088_1 WHERE type_of_aphasia = \"Anomic aphasia\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What was the Result F\u2013A on 21 February 2009, when the league position was 1st?",
+      "schema": "CREATE TABLE table_name_55 (result_f_a VARCHAR, league_position VARCHAR, date VARCHAR)",
+      "ground_truth": "SELECT result_f_a FROM table_name_55 WHERE league_position = \"1st\" AND date = \"21 february 2009\"",
+      "base_prediction": "SELECT result_f_a FROM table_name_55 WHERE date = '21 February 2009' AND league_position = '1st';",
+      "tuned_prediction": "SELECT result_f_a FROM table_name_55 WHERE league_position = \"1st\" AND date = \"21 february 2009\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is position does Dan O'Sullivan play?",
+      "schema": "CREATE TABLE table_name_58 (position VARCHAR, player VARCHAR)",
+      "ground_truth": "SELECT position FROM table_name_58 WHERE player = \"dan o'sullivan\"",
+      "base_prediction": "SELECT position FROM table_name_58 WHERE player = 'Dan O''Sullivan';",
+      "tuned_prediction": "SELECT position FROM table_name_58 WHERE player = \"dan o'sullivan\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Name the traditional for  \u5c4f\u5357\u53bf",
+      "schema": "CREATE TABLE table_2013618_1 (traditional VARCHAR, simplified VARCHAR)",
+      "ground_truth": "SELECT traditional FROM table_2013618_1 WHERE simplified = \"\u5c4f\u5357\u53bf\"",
+      "base_prediction": "SELECT traditional FROM table_2013618_1 WHERE simplified = '\u5c4f\u5357\u53bf';",
+      "tuned_prediction": "SELECT traditional FROM table_2013618_1 WHERE simplified = \"\u5c4f\u5357\u53bf\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Name the district for hugh glasgow",
+      "schema": "CREATE TABLE table_2668352_14 (district VARCHAR, incumbent VARCHAR)",
+      "ground_truth": "SELECT district FROM table_2668352_14 WHERE incumbent = \"Hugh Glasgow\"",
+      "base_prediction": "SELECT district FROM table_2668352_14 WHERE incumbent = 'hugh glasgow';",
+      "tuned_prediction": "SELECT district FROM table_2668352_14 WHERE incumbent = \"Hugh Glasgow\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Name the being qualities for having things of friendships, family, relationships with nature",
+      "schema": "CREATE TABLE table_name_20 (being__qualities_ VARCHAR, having__things_ VARCHAR)",
+      "ground_truth": "SELECT being__qualities_ FROM table_name_20 WHERE having__things_ = \"friendships, family, relationships with nature\"",
+      "base_prediction": "SELECT being__qualities_ FROM table_name_20 WHERE having__things_ IN ('friendships', 'family', 'relationships with nature');",
+      "tuned_prediction": "SELECT being__qualities_ FROM table_name_20 WHERE having__things_ = \"friendships, family, relationships with nature\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "which number lists the production code as 2j5809",
+      "schema": "CREATE TABLE table_27403436_1 (no VARCHAR, production_code VARCHAR)",
+      "ground_truth": "SELECT no FROM table_27403436_1 WHERE production_code = \"2J5809\"",
+      "base_prediction": "SELECT no FROM table_27403436_1 WHERE production_code = '2j5809';",
+      "tuned_prediction": "SELECT no FROM table_27403436_1 WHERE production_code = \"2J5809\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is listed under try bonus when listed under Tries for is tries for?",
+      "schema": "CREATE TABLE table_13399573_3 (try_bonus VARCHAR)",
+      "ground_truth": "SELECT try_bonus FROM table_13399573_3 WHERE \"tries_for\" = \"tries_for\"",
+      "base_prediction": "SELECT try_bonus FROM table_13399573_3;",
+      "tuned_prediction": "SELECT try_bonus FROM table_13399573_3 WHERE \"tries\" = \"tries\"",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "which championship had arantxa s\u00e1nchez vicario todd woodbridge as opponents in the final ",
+      "schema": "CREATE TABLE table_1918850_2 (championship VARCHAR, opponents_in_the_final VARCHAR)",
+      "ground_truth": "SELECT championship FROM table_1918850_2 WHERE opponents_in_the_final = \"Arantxa S\u00e1nchez Vicario Todd Woodbridge\"",
+      "base_prediction": "SELECT championship FROM table_1918850_2 WHERE opponents_in_the_final = 'arantxa s\u00e1nchez vicario todd woodbridge';",
+      "tuned_prediction": "SELECT championship FROM table_1918850_2 WHERE opponents_in_the_final = \"Arantxa S\u00e1nchez Vicario Todd Woodbridge\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the highest tonnage of the ship from norway?",
+      "schema": "CREATE TABLE table_name_71 (tonnage INTEGER, nationality VARCHAR)",
+      "ground_truth": "SELECT MAX(tonnage) FROM table_name_71 WHERE nationality = \"norway\"",
+      "base_prediction": "SELECT MAX(tonnage) FROM table_name_71 WHERE nationality = 'norway';",
+      "tuned_prediction": "SELECT MAX(tonnage) FROM table_name_71 WHERE nationality = \"norway\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What was the date of the game where Esteban Paredes scored 2 goals?",
+      "schema": "CREATE TABLE table_name_62 (date VARCHAR, goal VARCHAR)",
+      "ground_truth": "SELECT date FROM table_name_62 WHERE goal = 2",
+      "base_prediction": "SELECT date\nFROM table_name_62\nWHERE goal = 'Esteban Paredes' AND goals_scored = 2;",
+      "tuned_prediction": "SELECT date FROM table_name_62 WHERE goal = 2",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the Away team with Newcastle United as the Home team?",
+      "schema": "CREATE TABLE table_name_42 (away_team VARCHAR, home_team VARCHAR)",
+      "ground_truth": "SELECT away_team FROM table_name_42 WHERE home_team = \"newcastle united\"",
+      "base_prediction": "SELECT away_team FROM table_name_42 WHERE home_team = 'Newcastle United';",
+      "tuned_prediction": "SELECT away_team FROM table_name_42 WHERE home_team = \"newcastle united\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "what was the competitoin where the opponent is sheffield scimitars?",
+      "schema": "CREATE TABLE table_17120964_9 (competition VARCHAR, opponent VARCHAR)",
+      "ground_truth": "SELECT competition FROM table_17120964_9 WHERE opponent = \"Sheffield Scimitars\"",
+      "base_prediction": "SELECT competition FROM table_17120964_9 WHERE opponent = 'sheffield scimitars';",
+      "tuned_prediction": "SELECT competition FROM table_17120964_9 WHERE opponent = \"Sheffield Scimitars\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Which Circuit has a Winning Driver of hans-joachim stuck, and a Round of 3?",
+      "schema": "CREATE TABLE table_name_74 (circuit VARCHAR, winning_driver VARCHAR, round VARCHAR)",
+      "ground_truth": "SELECT circuit FROM table_name_74 WHERE winning_driver = \"hans-joachim stuck\" AND round = 3",
+      "base_prediction": "SELECT circuit FROM table_name_74 WHERE winning_driver = 'hans-joachim stuck' AND round = '3';",
+      "tuned_prediction": "SELECT circuit FROM table_name_74 WHERE winning_driver = \"hans-joachim stuck\" AND round = 3",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the capacity of the mine that is operated by Cyprus Amax minerals?",
+      "schema": "CREATE TABLE table_name_83 (capacity__thousands_of_metric_tons_ VARCHAR, operator VARCHAR)",
+      "ground_truth": "SELECT capacity__thousands_of_metric_tons_ FROM table_name_83 WHERE operator = \"cyprus amax minerals\"",
+      "base_prediction": "SELECT capacity__thousands_of_metric_tons_ FROM table_name_83 WHERE operator = 'Cyprus Amax minerals';",
+      "tuned_prediction": "SELECT capacity__thousands_of_metric_tons_ FROM table_name_83 WHERE operator = \"cyprus amax minerals\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Who was the Partner in the Algiers 2, Algeria Tournament?",
+      "schema": "CREATE TABLE table_name_2 (partner VARCHAR, tournament VARCHAR)",
+      "ground_truth": "SELECT partner FROM table_name_2 WHERE tournament = \"algiers 2, algeria\"",
+      "base_prediction": "SELECT partner FROM table_name_2 WHERE tournament = 'Algiers 2, Algeria';",
+      "tuned_prediction": "SELECT partner FROM table_name_2 WHERE tournament = \"algiers 2, algeria\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "WHAT kind of No Result has Wins smaller than 2, and Losses larger than 1?",
+      "schema": "CREATE TABLE table_name_2 (no_result VARCHAR, wins VARCHAR, losses VARCHAR)",
+      "ground_truth": "SELECT no_result FROM table_name_2 WHERE wins < 2 AND losses > 1",
+      "base_prediction": "SELECT no_result FROM table_name_2 WHERE wins < '2' AND losses > '1';",
+      "tuned_prediction": "SELECT no_result FROM table_name_2 WHERE wins < 2 AND losses > 1",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Who did the Rangers play in a game that was later than 72 when the team record was 39-27-9?",
+      "schema": "CREATE TABLE table_name_93 (opponent VARCHAR, game VARCHAR, record VARCHAR)",
+      "ground_truth": "SELECT opponent FROM table_name_93 WHERE game > 72 AND record = \"39-27-9\"",
+      "base_prediction": "SELECT opponent\nFROM table_name_93\nWHERE game > '72' AND record = '39-27-9' AND opponent IS NOT NULL;",
+      "tuned_prediction": "SELECT opponent FROM table_name_93 WHERE game > 72 AND record = \"39-27-9\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "In game 73, what were the total number of high assists?",
+      "schema": "CREATE TABLE table_28768469_10 (high_assists VARCHAR, game VARCHAR)",
+      "ground_truth": "SELECT COUNT(high_assists) FROM table_28768469_10 WHERE game = 73",
+      "base_prediction": "SELECT high_assists FROM table_28768469_10 WHERE game = '73';",
+      "tuned_prediction": "SELECT COUNT(high_assists) FROM table_28768469_10 WHERE game = 73",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "when deland is the fcsl team and 2008 is the year played who is the mlb team?",
+      "schema": "CREATE TABLE table_18373863_2 (mlb_team VARCHAR, years_played VARCHAR, fcsl_team VARCHAR)",
+      "ground_truth": "SELECT mlb_team FROM table_18373863_2 WHERE years_played = \"2008\" AND fcsl_team = \"DeLand\"",
+      "base_prediction": "SELECT mlb_team FROM table_18373863_2 WHERE fcsl_team = 'deland' AND years_played = '2008'",
+      "tuned_prediction": "SELECT mlb_team FROM table_18373863_2 WHERE years_played = \"2008\" AND fcsl_team = \"Deland\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "what is the total number of\u00a0kickoff [a ]\u00a0where\u00a0week\u00a0is week",
+      "schema": "CREATE TABLE table_11406866_2 (a_ VARCHAR, kickoff_ VARCHAR)",
+      "ground_truth": "SELECT COUNT(kickoff_)[a_] FROM table_11406866_2 WHERE \"week\" = \"week\"",
+      "base_prediction": "SELECT COUNT(*) FROM table_11406866_2 WHERE kickoff_ = 'week' AND a_ = 'week';",
+      "tuned_prediction": "SELECT COUNT(a_[kickoff_]) FROM table_11406866_2 WHERE week = \"Week\"",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "What position did he finish in 1987?",
+      "schema": "CREATE TABLE table_2387790_2 (position VARCHAR, year VARCHAR)",
+      "ground_truth": "SELECT position FROM table_2387790_2 WHERE year = 1987",
+      "base_prediction": "SELECT position FROM table_2387790_2 WHERE year = '1987';",
+      "tuned_prediction": "SELECT position FROM table_2387790_2 WHERE year = 1987",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What was Gary Player's highest total when his To par was over 15?",
+      "schema": "CREATE TABLE table_name_41 (total INTEGER, player VARCHAR, to_par VARCHAR)",
+      "ground_truth": "SELECT MAX(total) FROM table_name_41 WHERE player = \"gary player\" AND to_par > 15",
+      "base_prediction": "SELECT MAX(total) FROM table_name_41 WHERE player = 'Gary Player' AND CAST(to_par AS INTEGER) > 15;",
+      "tuned_prediction": "SELECT MAX(total) FROM table_name_41 WHERE player = \"gary player\" AND to_par > 15",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the total sum of 50m splits for josefin lillhage in lanes above 8?",
+      "schema": "CREATE TABLE table_name_24 (split__50m_ INTEGER, name VARCHAR, lane VARCHAR)",
+      "ground_truth": "SELECT SUM(split__50m_) FROM table_name_24 WHERE name = \"josefin lillhage\" AND lane > 8",
+      "base_prediction": "SELECT SUM(split__50m_) \nFROM table_name_24 \nWHERE name = 'josefin lillhage' AND lane > '8';",
+      "tuned_prediction": "SELECT SUM(split__50m_) FROM table_name_24 WHERE name = \"josefin lillhage\" AND lane > 8",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Where has Jimmy Demaret as a player?",
+      "schema": "CREATE TABLE table_name_94 (place VARCHAR, player VARCHAR)",
+      "ground_truth": "SELECT place FROM table_name_94 WHERE player = \"jimmy demaret\"",
+      "base_prediction": "SELECT place FROM table_name_94 WHERE player = 'Jimmy Demaret';",
+      "tuned_prediction": "SELECT place FROM table_name_94 WHERE player = \"jimmy demaret\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the total number of Goals scored that has more than 45 Points?",
+      "schema": "CREATE TABLE table_name_74 (goals_scored VARCHAR, points INTEGER)",
+      "ground_truth": "SELECT COUNT(goals_scored) FROM table_name_74 WHERE points > 45",
+      "base_prediction": "SELECT SUM(goals_scored) FROM table_name_74 WHERE points > 45;",
+      "tuned_prediction": "SELECT COUNT(goals_scored) FROM table_name_74 WHERE points > 45",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "How did the game number 50 end?",
+      "schema": "CREATE TABLE table_23248940_9 (score VARCHAR, game VARCHAR)",
+      "ground_truth": "SELECT score FROM table_23248940_9 WHERE game = 50",
+      "base_prediction": "SELECT score FROM table_23248940_9 WHERE game = '50';",
+      "tuned_prediction": "SELECT score FROM table_23248940_9 WHERE game = 50",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What player has a round larger than 2, and position of (d)?",
+      "schema": "CREATE TABLE table_name_20 (player VARCHAR, round VARCHAR, position VARCHAR)",
+      "ground_truth": "SELECT player FROM table_name_20 WHERE round > 2 AND position = \"(d)\"",
+      "base_prediction": "SELECT player\nFROM table_name_20\nWHERE round > '2' AND position = 'd';",
+      "tuned_prediction": "SELECT player FROM table_name_20 WHERE round > 2 AND position = \"(d)\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What was sweden's score in T9 place?",
+      "schema": "CREATE TABLE table_name_27 (score VARCHAR, place VARCHAR, country VARCHAR)",
+      "ground_truth": "SELECT score FROM table_name_27 WHERE place = \"t9\" AND country = \"sweden\"",
+      "base_prediction": "SELECT score FROM table_name_27 WHERE place = 'T9' AND country = 'sweden';",
+      "tuned_prediction": "SELECT score FROM table_name_27 WHERE place = \"t9\" AND country = \"sweden\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What was the Attendance on November 26?",
+      "schema": "CREATE TABLE table_name_98 (attendance VARCHAR, date VARCHAR)",
+      "ground_truth": "SELECT attendance FROM table_name_98 WHERE date = \"november 26\"",
+      "base_prediction": "SELECT attendance FROM table_name_98 WHERE date = 'November 26';",
+      "tuned_prediction": "SELECT attendance FROM table_name_98 WHERE date = \"november 26\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Who finished in third place when the winner was Karina Bacchi? ",
+      "schema": "CREATE TABLE table_25214321_1 (third_place VARCHAR, winner VARCHAR)",
+      "ground_truth": "SELECT third_place FROM table_25214321_1 WHERE winner = \"Karina Bacchi\"",
+      "base_prediction": "SELECT third_place FROM table_25214321_1 WHERE winner = 'Karina Bacchi';",
+      "tuned_prediction": "SELECT third_place FROM table_25214321_1 WHERE winner = \"Karina Bacchi\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "When is the date of appointment when the position in table is 16?",
+      "schema": "CREATE TABLE table_27383390_4 (date_of_appointment VARCHAR, position_in_table VARCHAR)",
+      "ground_truth": "SELECT date_of_appointment FROM table_27383390_4 WHERE position_in_table = 16",
+      "base_prediction": "SELECT date_of_appointment FROM table_27383390_4 WHERE position_in_table = '16';",
+      "tuned_prediction": "SELECT date_of_appointment FROM table_27383390_4 WHERE position_in_table = \"16\"",
+      "base_correct": false,
+      "tuned_correct": false
+    },
+    {
+      "question": "What is Date, when Outcome is \"Winner\", and when Opponents is \"Paul Haarhuis Sandon Stolle\"?",
+      "schema": "CREATE TABLE table_name_48 (date VARCHAR, outcome VARCHAR, opponents VARCHAR)",
+      "ground_truth": "SELECT date FROM table_name_48 WHERE outcome = \"winner\" AND opponents = \"paul haarhuis sandon stolle\"",
+      "base_prediction": "SELECT date FROM table_name_48 WHERE outcome = 'Winner' AND opponents = 'Paul Haarhuis Sandon Stolle';",
+      "tuned_prediction": "SELECT date FROM table_name_48 WHERE outcome = \"winner\" AND opponents = \"paul haarhuis sandon stolle\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "What is the location of the Saints having 1979- as Years in GFL?",
+      "schema": "CREATE TABLE table_name_37 (location VARCHAR, years_in_gfl VARCHAR, nickname VARCHAR)",
+      "ground_truth": "SELECT location FROM table_name_37 WHERE years_in_gfl = \"1979-\" AND nickname = \"saints\"",
+      "base_prediction": "SELECT location FROM table_name_37 WHERE years_in_gfl = '1979-';",
+      "tuned_prediction": "SELECT location FROM table_name_37 WHERE years_in_gfl = \"1979-\" AND nickname = \"saints\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Who was the Team that was played against on February 24 and a game after game 55?",
+      "schema": "CREATE TABLE table_name_61 (team VARCHAR, game VARCHAR, date VARCHAR)",
+      "ground_truth": "SELECT team FROM table_name_61 WHERE game > 55 AND date = \"february 24\"",
+      "base_prediction": "SELECT team\nFROM table_name_61\nWHERE date = 'February 24' AND game > '55';",
+      "tuned_prediction": "SELECT team FROM table_name_61 WHERE game > 55 AND date = \"february 24\"",
+      "base_correct": false,
+      "tuned_correct": true
+    },
+    {
+      "question": "Who is the monarch with the heir thado minsaw?",
+      "schema": "CREATE TABLE table_26460435_8 (monarch VARCHAR, heir VARCHAR)",
+      "ground_truth": "SELECT monarch FROM table_26460435_8 WHERE heir = \"Thado Minsaw\"",
+      "base_prediction": "SELECT monarch FROM table_26460435_8 WHERE heir = 'thado minsaw';",
+      "tuned_prediction": "SELECT monarch FROM table_26460435_8 WHERE heir = \"Thado Minsaw\"",
+      "base_correct": false,
+      "tuned_correct": true
+    }
+  ]
+}

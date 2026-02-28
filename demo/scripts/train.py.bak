@@ -18,6 +18,7 @@ This is the same kind of training you'd do in a notebook, but:
 """
 
 import os
+import shutil
 import torch
 from datasets import load_from_disk
 from transformers import (
@@ -88,9 +89,16 @@ def main():
 
     rank = int(os.environ.get("RANK", os.environ.get("LOCAL_RANK", "0")))
 
+    # Use local SSD for checkpoints during training (much faster than shared NFS).
+    # The final model gets copied back to the shared output_dir after training.
+    local_data = os.environ.get("LOCAL_DATA_DIR", "/mnt/local-data")
+    local_output_dir = os.path.join(local_data, os.path.basename(output_dir))
+    os.makedirs(local_output_dir, exist_ok=True)
+
     if rank == 0:
         print(f"Model:      {model_path}")
         print(f"Output:     {output_dir}")
+        print(f"Local dir:  {local_output_dir}")
         print(f"Dataset:    {dataset_path}")
         print(f"Batch size: {per_device_bs} per GPU, {grad_accum} accumulation steps")
 
@@ -106,36 +114,12 @@ def main():
         model_path,
         torch_dtype=torch.bfloat16,
         trust_remote_code=True,
-        attn_implementation="flash_attention_2",
-    )
-
-    # --- Load and prepare dataset ---
-    dataset = load_from_disk(dataset_path)
-    train_data = dataset["train"]
-
-    # Split into train (95%) and eval (5%) sets
-    split = train_data.train_test_split(test_size=0.05, seed=42)
-    train_ds = split["train"]
-    eval_ds = split["test"]
-
-    if rank == 0:
-        print(f"Train examples: {len(train_ds)}, Eval examples: {len(eval_ds)}")
-
-    # Tokenize the datasets
-    train_ds = train_ds.map(
-        lambda x: tokenize_example(x, tokenizer),
-        remove_columns=train_ds.column_names,
-        desc="Tokenizing train",
-    )
-    eval_ds = eval_ds.map(
-        lambda x: tokenize_example(x, tokenizer),
-        remove_columns=eval_ds.column_names,
-        desc="Tokenizing eval",
+        attn_implementation="sdpa",
     )
 
     # --- Training arguments ---
     training_args = TrainingArguments(
-        output_dir=output_dir,
+        output_dir=local_output_dir,
 
         # How many passes through the data
         num_train_epochs=num_epochs,
@@ -177,7 +161,7 @@ def main():
         eval_steps=500,
         save_strategy="steps",
         save_steps=500,
-        save_total_limit=2,
+        save_total_limit=1,
 
         # Data loading
         dataloader_num_workers=4,
@@ -185,6 +169,31 @@ def main():
         # Don't send metrics to wandb/tensorboard
         report_to="none",
     )
+
+    # --- Load and prepare dataset ---
+    # Use main_process_first() so rank 0 preprocesses and caches the dataset,
+    # then all other ranks load from cache. This is HuggingFace's canonical
+    # approach for avoiding cache race conditions on shared filesystems.
+    with training_args.main_process_first(desc="Loading and tokenizing dataset"):
+        dataset = load_from_disk(dataset_path)
+        train_data = dataset["train"]
+        split = train_data.train_test_split(test_size=0.05, seed=42)
+        train_ds = split["train"]
+        eval_ds = split["test"]
+
+        if rank == 0:
+            print(f"Train examples: {len(train_ds)}, Eval examples: {len(eval_ds)}")
+
+        train_ds = train_ds.map(
+            lambda x: tokenize_example(x, tokenizer),
+            remove_columns=train_ds.column_names,
+            desc="Tokenizing train",
+        )
+        eval_ds = eval_ds.map(
+            lambda x: tokenize_example(x, tokenizer),
+            remove_columns=eval_ds.column_names,
+            desc="Tokenizing eval",
+        )
 
     # --- Create trainer and start training ---
     trainer = Trainer(
@@ -203,11 +212,25 @@ def main():
     trainer.train()
 
     # --- Save the fine-tuned model ---
-    # Only rank 0 saves (Trainer handles gathering FSDP shards automatically)
+    # The Trainer already saved a full checkpoint (with model safetensors) to local
+    # SSD during training. We copy the model files from the last checkpoint to the
+    # shared NFS output_dir so evaluate/serve scripts can find them.
+    # NOTE: We intentionally skip trainer.save_model() here because the FSDP
+    # FULL_STATE_DICT all-gather after training exceeds the torchrun rendezvous
+    # timeout (300s) and kills the job. The checkpoint already has the full model.
     if trainer.is_world_process_zero():
-        trainer.save_model(output_dir)
-        tokenizer.save_pretrained(output_dir)
-        print(f"\nTraining complete! Model saved to {output_dir}")
+        import glob
+        checkpoints = sorted(glob.glob(os.path.join(local_output_dir, "checkpoint-*")))
+        if checkpoints:
+            last_ckpt = checkpoints[-1]
+            print(f"Copying model from {last_ckpt} to {output_dir} ...")
+            os.makedirs(output_dir, exist_ok=True)
+            for fname in os.listdir(last_ckpt):
+                src = os.path.join(last_ckpt, fname)
+                if os.path.isfile(src) and not fname.startswith(("rng_state", "optimizer", "pytorch_model_fsdp", "training_args")):
+                    shutil.copy2(src, output_dir)
+            tokenizer.save_pretrained(output_dir)
+            print(f"\nTraining complete! Model saved to {output_dir}")
 
 
 if __name__ == "__main__":

@@ -32,6 +32,7 @@ conda activate demo
 # --- Accept model paths as arguments (with defaults for 8B) ---
 BASE_MODEL=${1:-$DEMO_DIR/models/Qwen3-8B}
 TUNED_MODEL=${2:-$DEMO_DIR/output/qwen3-8b-sql}
+PREFIX=${3:-""}
 
 echo "=========================================="
 echo "Evaluating: $BASE_MODEL vs $TUNED_MODEL"
@@ -40,4 +41,5 @@ echo "=========================================="
 python "$DEMO_DIR/scripts/evaluate.py" \
     --base-model "$BASE_MODEL" \
     --tuned-model "$TUNED_MODEL" \
-    --num-examples 100
+    --num-examples 100 \
+    ${PREFIX:+--prefix "$PREFIX"}

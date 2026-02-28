@@ -123,6 +123,11 @@ def main():
         "--results-dir",
         default=os.environ.get("RESULTS_DIR", "/mnt/data/demo/results"),
     )
+    parser.add_argument(
+        "--prefix",
+        default="",
+        help="Optional prefix for result filenames (e.g., 'qwen3-32b-lora_')",
+    )
     args = parser.parse_args()
 
     os.makedirs(args.results_dir, exist_ok=True)
@@ -158,6 +163,9 @@ def main():
     # --- Print results ---
     print(f"\n{'='*60}")
     print(f"  RESULTS ({num} test examples)")
+    print(f"{'='*60}")
+    print(f"  Base model:      {args.base_model}")
+    print(f"  Fine-tuned model: {args.tuned_model}")
     print(f"{'='*60}")
     print(f"  Base model accuracy:       {base_acc:5.1f}%  ({base_correct}/{num})")
     print(f"  Fine-tuned model accuracy: {tuned_acc:5.1f}%  ({tuned_correct}/{num})")
@@ -203,12 +211,12 @@ def main():
             fontsize=14,
         )
     plt.tight_layout()
-    chart_path = os.path.join(args.results_dir, "accuracy_comparison.png")
+    chart_path = os.path.join(args.results_dir, f"{args.prefix}accuracy_comparison.png")
     plt.savefig(chart_path, dpi=150)
     print(f"Chart saved to: {chart_path}")
 
     # --- Save detailed results as JSON ---
-    results_path = os.path.join(args.results_dir, "results.json")
+    results_path = os.path.join(args.results_dir, f"{args.prefix}results.json")
     with open(results_path, "w") as f:
         json.dump(
             {
@@ -235,6 +243,31 @@ def main():
             indent=2,
         )
     print(f"Detailed results saved to: {results_path}")
+
+    # --- Save results as Markdown ---
+    md_path = os.path.join(args.results_dir, f"{args.prefix}results.md")
+    with open(md_path, "w") as f:
+        f.write(f"# Evaluation Results ({num} test examples)\n\n")
+        f.write(f"| | Model | Accuracy | Correct |\n")
+        f.write(f"|---|---|---|---|\n")
+        f.write(f"| Base | `{args.base_model}` | {base_acc:.1f}% | {base_correct}/{num} |\n")
+        f.write(f"| Fine-tuned | `{args.tuned_model}` | {tuned_acc:.1f}% | {tuned_correct}/{num} |\n\n")
+        f.write(f"**Improvement: {tuned_acc - base_acc:+.1f}%**\n\n")
+        f.write(f"## Examples where fine-tuning fixed the output\n\n")
+        shown = 0
+        for i in range(num):
+            base_ok = normalize_sql(base_preds[i]) == normalize_sql(ground_truth[i])
+            tuned_ok = normalize_sql(tuned_preds[i]) == normalize_sql(ground_truth[i])
+            if not base_ok and tuned_ok and shown < 5:
+                f.write(f"### Example {i+1}\n\n")
+                f.write(f"**Question:** {test_data[i]['question']}\n\n")
+                f.write(f"**Ground truth:** `{ground_truth[i]}`\n\n")
+                f.write(f"**Base model:** `{base_preds[i]}`\n\n")
+                f.write(f"**Fine-tuned:** `{tuned_preds[i]}`\n\n")
+                shown += 1
+        if shown == 0:
+            f.write("(No clear examples found — try with more test examples)\n")
+    print(f"Markdown results saved to: {md_path}")
 
 
 if __name__ == "__main__":

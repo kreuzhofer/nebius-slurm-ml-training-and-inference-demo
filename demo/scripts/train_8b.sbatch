@@ -50,6 +50,7 @@ export LEARNING_RATE=2e-5
 export NCCL_DEBUG=WARN                 # Set to INFO for debugging connectivity
 export NCCL_IB_DISABLE=0              # Enable InfiniBand (fast GPU-to-GPU across nodes)
 export NCCL_NET_GDR_LEVEL=5           # Enable GPUDirect RDMA
+export NCCL_TIMEOUT=3600              # 1 hour timeout for FSDP all-gather during model save
 
 # --- Figure out which node is the "master" for coordination ---
 MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n1)
