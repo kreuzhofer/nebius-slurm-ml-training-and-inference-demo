@@ -49,6 +49,86 @@ Both are referenced by ID in the tfvars (`existing = { id = "computefilesystem-.
 
 Additionally, `node_local_jail_submounts` creates a 1TB local SSD (`/mnt/local-data`) on each worker node for fast checkpoint I/O. Other relevant settings: `slurm_shared_memory_size_gibibytes = 1024` (1 TiB shared memory per node) and `slurm_login_public_ip = true` (public IP on login nodes for SSH access).
 
+### Deployed Virtual Machines
+
+The Terraform template deploys several types of VMs (running as Kubernetes pods under Soperator), each with a specific role in the cluster:
+
+| Node Type | Count | Platform / Preset | Role |
+|---|---|---|---|
+| **Worker** | 2 | gpu-h100-sxm / 8gpu-128vcpu-1600gb | The GPU compute nodes. All training and inference jobs run here. Each has 8x H100 80GB GPUs, 128 vCPUs, 1.6TB RAM, and is connected to the InfiniBand fabric. |
+| **Login** | 2 | cpu-d3 / 32vcpu-128gb | SSH entry points to the cluster. You connect here to submit Slurm jobs (`sbatch`), check job status (`squeue`, `sacct`), and access the shared filesystem. Has a public IP. |
+| **Controller** | 1 | cpu-d3 / 4vcpu-16gb | Runs the Slurm controller daemon (`slurmctld`). Manages the job queue, schedules jobs onto workers, and tracks node state. Users don't interact with it directly. |
+| **NFS** | 1 | cpu-d3 / 32vcpu-128gb | Serves the NFS `/home` filesystem to all nodes. Separate from the Nebius filestores used for `/mnt/data`. |
+| **Accounting** | 1 | cpu-d3 / 8vcpu-32gb | Runs the Slurm accounting database (`slurmdbd`). Records job history, resource usage, and enables `sacct` queries for completed jobs. |
+| **System** | 3–9 | cpu-d3 / 8vcpu-32gb | Kubernetes system nodes managed by Soperator. Run cluster infrastructure (operators, monitoring, DCGM exporter, health checks). Auto-scaled based on cluster size. |
+
+In total, the cluster runs ~10 VMs: 2 GPU workers doing the actual compute, and ~8 supporting nodes handling scheduling, storage, access, monitoring, and accounting.
+
+### Deploying the Cluster
+
+Deployment followed the [Soperator guide](https://github.com/nebius/nebius-solutions-library/tree/main/soperator). Prerequisites: Terraform, Nebius CLI (`nebius`), kubectl, jq, and coreutils.
+
+**Step 1 — Create the installation directory** from the example template:
+
+```bash
+cd soperator
+export INSTALLATION_NAME=dkreuzh001
+mkdir -p installations/$INSTALLATION_NAME
+cd installations/$INSTALLATION_NAME
+cp -r ../example/* ../example/.* .
+```
+
+**Step 2 — Create shared filesystems** in the Nebius Console. The jail (root shared filesystem) and data filesystem (`/mnt/data`) were created manually and their IDs noted for use in `terraform.tfvars`.
+
+**Step 3 — Configure and source `.envrc`**. The copied `.envrc` template needs the correct Nebius credentials before sourcing:
+
+- `NEBIUS_TENANT_ID` — your Nebius tenant ID
+- `NEBIUS_PROJECT_ID` — the project ID where the cluster will be deployed
+
+Once these are set, sourcing the file handles the rest automatically:
+
+1. Authenticating with Nebius IAM (`nebius iam get-access-token`)
+2. Looking up the VPC subnet ID for the project
+3. Creating (or reusing) a service account (`slurm-terraform-sa`) and adding it to the `editors` group
+4. Generating a temporary S3 access key for Terraform state storage
+5. Creating (or reusing) an S3 bucket for the Terraform backend and writing `terraform_backend_override.tf`
+6. Exporting all required `TF_VAR_*` environment variables (region, IAM token, project ID, subnet ID, etc.)
+
+```bash
+source .envrc
+nebius iam whoami   # verify authentication
+```
+
+**Step 4 — Configure `terraform.tfvars`** with cluster settings (see changes table above).
+
+**Step 5 — Deploy**:
+
+```bash
+terraform init      # initialize providers and modules
+terraform plan      # review what will be created
+terraform apply     # deploy the cluster (~40 minutes)
+```
+
+`terraform apply` provisions the Kubernetes cluster, installs Soperator via Helm, and deploys all Slurm node sets. The GPU health checks (`active_checks_scope = "prod_quick"`) run automatically after workers come up.
+
+**Step 6 — Verify** the Kubernetes cluster:
+
+```bash
+kubectl config get-contexts                          # confirm context was added
+kubectl config use-context nebius-dkreuzh001-slurm   # switch to cluster context
+kubectl get pods --all-namespaces                    # check all pods are running
+kubectl get pods --all-namespaces -o wide            # also shows which node each pod runs on
+```
+
+### Connecting to the Cluster
+
+After deployment, retrieve the login node's public IP and SSH in:
+
+```bash
+terraform output -json slurm_login_public_ips
+ssh root@<login_node_ip> -i ~/.ssh/<private_key>
+```
+
 ### Ranks in Distributed Training
 
 Each GPU runs its own process, and every process is assigned a unique **rank** (0–15 across the job) and a **local rank** (0–7 within each node). These are set automatically by `torchrun`. All 16 ranks participate equally in training — **forward pass** (feeding data through the model to get a prediction), **backward pass** (computing how much each parameter contributed to the error, producing **gradients**), and **gradient synchronization** (averaging gradients across all GPUs so they agree on how to update the model) via FSDP. **Rank 0** (first GPU on the first node) acts as the leader for housekeeping tasks that should only happen once: logging, dataset preprocessing/caching, and saving the final model. It has no special role during the actual training computation.
