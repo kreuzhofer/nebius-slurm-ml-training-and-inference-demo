@@ -17,7 +17,7 @@
 #   curl http://<HEAD_NODE>:8000/v1/chat/completions \
 #     -H "Content-Type: application/json" \
 #     -d '{
-#       "model": "/mnt/data/demo/models/Qwen3-235B-A22B",
+#       "model": "Qwen3-235B-A22B",
 #       "messages": [
 #         {"role": "system", "content": "You are a SQL expert. Given a database schema and a question, write the correct SQL query. Output only the SQL query, nothing else."},
 #         {"role": "user", "content": "Schema: CREATE TABLE users (id INT, name TEXT, age INT)\nQuestion: Find all users older than 25"}
@@ -38,6 +38,9 @@ export DEMO_DIR="/mnt/data/demo"
 export PATH="$DEMO_DIR/miniconda3/bin:$PATH"
 eval "$(conda shell.bash hook)"
 conda activate demo
+
+# --- Triton cache on local SSD so each node compiles independently (no NFS race) ---
+export TRITON_CACHE_DIR="/mnt/local-data/.triton_cache"
 
 # --- Arguments ---
 MODEL_PATH=${1:-$DEMO_DIR/models/Qwen3-235B-A22B}
@@ -65,14 +68,14 @@ echo "=========================================="
 # --- Step 1: Start Ray head on the first node ---
 # --overlap allows multiple srun steps to share the same task slots within this job
 srun --overlap --nodes=1 --ntasks=1 -w "$HEAD_NODE" \
-    ray start --head --port=6379 --num-gpus=8 --block &
+    bash -c "mkdir -p $TRITON_CACHE_DIR && ray start --head --port=6379 --num-gpus=8 --block" &
 sleep 15  # Wait for the head to be ready
 
 # --- Step 2: Join worker nodes to the Ray cluster ---
 for NODE in $WORKER_NODES; do
     echo "Joining $NODE to Ray cluster..."
     srun --overlap --nodes=1 --ntasks=1 -w "$NODE" \
-        ray start --address="$HEAD_IP:6379" --num-gpus=8 --block &
+        bash -c "mkdir -p $TRITON_CACHE_DIR && ray start --address=$HEAD_IP:6379 --num-gpus=8 --block" &
 done
 sleep 15  # Wait for workers to register
 
@@ -82,6 +85,7 @@ sleep 15  # Wait for workers to register
 srun --overlap --nodes=1 --ntasks=1 -w "$HEAD_NODE" \
     python -m vllm.entrypoints.openai.api_server \
         --model "$MODEL_PATH" \
+        --served-model-name "$(basename "$MODEL_PATH")" \
         --tensor-parallel-size 8 \
         --pipeline-parallel-size 2 \
         --distributed-executor-backend ray \

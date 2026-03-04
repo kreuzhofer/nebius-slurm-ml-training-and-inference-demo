@@ -64,6 +64,8 @@ The Terraform template deploys several types of VMs (running as Kubernetes pods 
 
 In total, the cluster runs ~10 VMs: 2 GPU workers doing the actual compute, and ~8 supporting nodes handling scheduling, storage, access, monitoring, and accounting.
 
+Since all of these run as pods on a shared Kubernetes cluster, Soperator uses **taints and tolerations** combined with **node affinity** to pin each pod type to the correct node type. Every node group gets a label (`slurm.nebius.ai/nodeset: worker`, `login`, `controller`, etc.) and a `NoSchedule` **taint** — a marker that repels all pods unless they explicitly **tolerate** it. Each pod then declares both a **node affinity** rule ("schedule me on nodes labeled `login`") and a matching toleration ("I'm allowed on nodes tainted `login`"). GPU worker nodes carry an additional `nvidia.com/gpu` taint so only GPU workloads can be scheduled there. This is all configured automatically by Soperator based on the node sets in `terraform.tfvars` — no manual scheduling configuration is needed.
+
 ### Deploying the Cluster
 
 Deployment followed the [Soperator guide](https://github.com/nebius/nebius-solutions-library/tree/main/soperator). Prerequisites: Terraform, Nebius CLI (`nebius`), kubectl, jq, and coreutils.
@@ -162,13 +164,23 @@ Each GPU runs its own process, and every process is assigned a unique **rank** (
 
 **Problem**: All 16 torchrun processes simultaneously called `train_test_split()` and `dataset.map()` on the shared NFS filesystem. The HuggingFace `datasets` library writes **Arrow cache files** (pre-processed data saved to disk so it doesn't need to be recomputed) during these operations, and 16 processes racing to create/read the same cache files caused `FileNotFoundError` crashes.
 
-**Solution**: Disabled HuggingFace dataset caching entirely (`datasets.disable_caching()`). Each rank processes the dataset independently in memory. The dataset is small enough (~75K examples) that this adds negligible overhead, and it eliminates the cross-node race condition completely.
+**First attempt**: Wrapped the dataset loading and tokenization in `training_args.main_process_first()` — HuggingFace's canonical solution for this problem. This uses a distributed barrier so rank 0 preprocesses and caches the dataset first, then all other ranks load from cache. However, this still failed on shared NFS — the `train_test_split()` and `map()` operations inside the barrier still produced cache file conflicts across the two nodes, likely because NFS cache coherence wasn't fast enough for the other ranks to see the files immediately after rank 0 finished writing them.
+
+**Solution that worked**: Disabled HuggingFace dataset caching entirely (`datasets.disable_caching()`). Each rank processes the dataset independently in memory. The dataset is small enough (~75K examples) that this adds negligible overhead, and it eliminates the cross-node race condition completely.
+
+**Better approach for next time**: A cleaner solution would be to split dataset preparation into a separate single-node Slurm job that runs before training. This `preprocess.sbatch` job would run on a single node (no GPUs needed), load the raw dataset, tokenize it, and save the fully preprocessed Arrow dataset to shared NFS. The training job would then be submitted with a Slurm dependency (`sbatch --dependency=afterok:<preprocess_job_id> train_8b.sbatch`), ensuring it only starts after the preprocessing job has completed successfully. The training script would simply call `load_from_disk()` on the already-tokenized dataset — no `train_test_split()`, no `map()`, no caching, no race condition possible.
+
+This avoids the NFS coherence problem that broke `main_process_first()`: in that approach, rank 0 wrote cache files and the other 15 ranks tried to read them within the same job, separated by milliseconds — not enough time for NFS metadata caches on the other node to see the new files. With a separate Slurm job, the preprocessing process exits completely, Slurm marks the job as `COMPLETED`, schedules the training job, allocates nodes, and starts containers — a gap of at least tens of seconds, more than enough for NFS to sync. The training job reads finalized files, not transient cache files being written concurrently.
+
+To make this bulletproof, the preprocessing job should call `sync` before exiting — this forces the NFS client to flush all pending writes to the server rather than relying on NFS cache expiry. The training script should then validate the dataset at startup (check that the expected files exist and the row count matches) with a short retry loop as a safety net. Combined with the Slurm dependency gap, this eliminates any chance of stale reads.
+
+This is also more elegant because it separates concerns: data preparation is inherently a single-process task, while training is a multi-process task. Mixing them in the same script is what creates the race condition in the first place. As a bonus, the preprocessed dataset can be reused across multiple training runs (e.g., different hyperparameters or model sizes) without re-tokenizing each time.
 
 #### 2. FSDP Model Save Timeout
 
 **Problem**: After training completes, calling `trainer.save_model()` triggers an FSDP **all-gather** (a collective operation where every GPU sends its shard of the model to rank 0, reconstructing the full model in one place). For an 8B model across 16 GPUs, this operation exceeded the torchrun **rendezvous timeout** (the deadline for all processes to complete a coordinated operation, 300 seconds), killing the job before the model could be saved.
 
-**Solution**: Skip `save_model()` entirely. The HuggingFace Trainer already saves a full **checkpoint** (a snapshot of the model weights saved to disk, in **safetensors** format — a safe, fast file format for storing model weights) during training at `save_steps` intervals. After training, rank 0 copies the model files from the last checkpoint to the shared output directory, filtering out unnecessary files (**optimizer states** — extra data the optimizer needs to track training momentum, FSDP shards, RNG states).
+**Solution**: Skip `save_model()` entirely. The HuggingFace Trainer already saves a full **checkpoint** (a snapshot of the model weights saved to disk, in **safetensors** format — a safe, fast file format for storing model weights) during training at `save_steps` intervals. After training, rank 0 copies the model files from the last checkpoint to the shared output directory, filtering out training-only artifacts (**optimizer states** — extra data the optimizer needs to track training momentum, FSDP shards, RNG states). The checkpoint already contains the heavy files: the model weights (`model-*.safetensors`, ~16GB for 8B), the architecture config (`config.json` — number of layers, hidden size, vocab size, etc.), and generation settings. Finally, `tokenizer.save_pretrained()` adds a few small metadata files — the vocabulary, merge rules, special token mappings, and chat template — that tell inference tools how to convert text into the token IDs the model expects and decode its output back into text. Together, the copied weights plus tokenizer metadata form a complete, self-contained model directory that vLLM, `evaluate.py`, or any other tool can load directly with `from_pretrained()`.
 
 #### 3. Slow Checkpoint I/O on Shared Storage
 
@@ -179,6 +191,10 @@ Each GPU runs its own process, and every process is assigned a unique **rank** (
 ---
 
 ## Chapter 2: Evaluating Qwen3-8B
+
+### Ensuring Fair Evaluation
+
+Both the training script (`train.py`) and evaluation script (`evaluate.py`) split the dataset using the same call: `dataset["train"].train_test_split(test_size=0.05, seed=42)`. The fixed `seed=42` guarantees both scripts produce the identical 95/5 split — the training script trains on the 95% portion, and the evaluation script evaluates on the 5% portion. This ensures we never evaluate on data the model was trained on. Without the same seed, the random split would differ between runs, and some test examples could overlap with training data, making the accuracy numbers meaningless.
 
 ### Evaluation Results (100 test examples, exact-match accuracy)
 
@@ -234,7 +250,28 @@ FSDP distributes the model **parameters** (the learned weights of the neural net
 
 This leaves almost no headroom on 80GB GPUs. During FSDP initialization, a single 932MB allocation request fails because the remaining memory is too fragmented. The dominant consumer is **optimizer states** — AdamW's two float32 copies total ~32GB even after sharding.
 
-We attempted **CPU offloading** (`fsdp="full_shard offload auto_wrap"` — moving optimizer states from GPU to CPU RAM, which is much larger) to free ~16–20GB per GPU. This resolved the OOM but introduced a secondary failure: FSDP's **activation checkpointing** (a technique that saves memory by not storing all activations during the forward pass, instead recomputing them during the backward pass — trades compute time for memory) is incompatible with Qwen3's **SDPA** (Scaled Dot-Product Attention — PyTorch's built-in efficient attention implementation) because Qwen3 uses **sliding window attention** (a variant where each token only attends to a fixed window of nearby tokens, not the entire sequence) with varying key-value lengths that cause shape mismatches during recomputation. **Flash Attention 2** (a faster, more memory-efficient attention implementation that handles causal masking internally) would avoid this issue but was not installed in the environment.
+We attempted **CPU offloading** (`fsdp="full_shard offload auto_wrap"` — moving optimizer states from GPU to CPU RAM, which is much larger) to free ~16–20GB per GPU. This resolved the OOM but introduced a secondary failure with **activation checkpointing**.
+
+**Activation checkpointing** works like this: a transformer model is a stack of blocks (Qwen3-32B has 64), each containing multiple sub-operations:
+
+```
+Block input  ← SAVED (checkpoint boundary)
+  → Layer Norm
+  → Q/K/V projections (3 matrix multiplications)     ┐
+  → Attention (softmax over scores, weighted sum)     │ intermediate activations
+  → Output projection                                 │ THROWN AWAY
+  → Residual add                                      │ (recomputed during backward)
+  → Layer Norm                                        │
+  → MLP up/gate projections                           │
+  → Activation function (SiLU)                        │
+  → MLP down projection                              ┘
+  → Residual add
+Block output ← SAVED (= next block's input)
+```
+
+During a normal forward pass, every intermediate result (**activation**) from each sub-operation is kept in GPU memory because the backward pass needs them to compute gradients. This can consume 20–30GB per GPU. With activation checkpointing, only the **input to each transformer block** is saved — all intermediate activations within the block are thrown away. During the backward pass, when gradients for block N are needed, the block's forward pass is **re-run** from the saved input to regenerate the intermediates on the fly. This trades ~33% more compute (each block's forward runs twice) for ~30% less activation memory.
+
+The problem: FSDP's activation checkpointing is incompatible with Qwen3's **SDPA** (Scaled Dot-Product Attention — PyTorch's built-in efficient attention implementation) because Qwen3 uses **sliding window attention** (a variant where each token only attends to a fixed window of nearby tokens, not the entire sequence) with varying key-value lengths that cause shape mismatches when the attention computation is rerun during the backward pass. **Flash Attention 2** (a faster, more memory-efficient attention implementation that handles causal masking internally) would avoid this issue but was not installed in the environment.
 
 ### The Solution: LoRA (Low-Rank Adaptation)
 
@@ -492,6 +529,12 @@ srun --overlap --nodes=1 --ntasks=1 -w "$HEAD_NODE" python -m vllm ...
 
 **Solution**: Explicitly set `--distributed-executor-backend ray` so vLLM uses the Ray cluster to discover GPUs across all nodes.
 
+#### 4. Triton Cache Race Condition on Shared Filesystem
+
+**Problem**: vLLM uses **Triton** (a GPU kernel compiler) which compiles optimized **GPU kernels** — small, specialized programs that run directly on the GPU to perform specific operations like matrix multiplications or attention computations. Think of kernels as micro-programs: instead of the GPU running one general-purpose program, it runs many tiny purpose-built programs, each optimized for a specific operation and the specific GPU architecture. Triton compiles these kernels on-the-fly and caches the compiled results to disk (by default `~/.triton/cache`) so they don't need to be recompiled on subsequent runs. With two nodes starting simultaneously, both tried to compile and write the same kernel cache files on shared NFS, causing filesystem race conditions — the same class of problem as the dataset cache issue.
+
+**Solution**: Redirect Triton's cache to local SSD on each node (`TRITON_CACHE_DIR="/mnt/local-data/.triton_cache"`) so each node compiles independently with no shared filesystem contention.
+
 ### Startup Timeline
 
 | Phase | Duration | Description |
@@ -526,92 +569,20 @@ The model uses Qwen3's **thinking mode** (`<think>` tags) by default, providing 
 
 ---
 
-## Appendix A: Slurm for Training vs. Slurm for Inference
+## Appendix B: Triton Kernels
 
-### What Slurm Actually Does
+**GPU kernels** are small, specialized programs that run directly on the GPU. Instead of the GPU running one big general-purpose program, it runs thousands of tiny purpose-built kernels — one for matrix multiplication, one for attention, one for layer normalization, etc. Each kernel is optimized for the specific GPU architecture (H100 in our case) and the specific tensor shapes being processed.
 
-Slurm is a **job scheduler** — it manages who gets to use which machines and GPUs. Think of it as a receptionist at a hotel: you request "I need 2 rooms with 8 beds each," and Slurm finds available rooms, gives you the keys, and kicks you out when your time is up. It doesn't care *what* you do inside the rooms.
-
-This means Slurm's role is identical for training and inference: allocate nodes, allocate GPUs, run your script, clean up when done. The difference is what runs *inside* the Slurm job.
-
-### The Three-Layer Stack
-
-Both training and inference on a GPU cluster have three layers:
+**Triton** (OpenAI's GPU kernel compiler, not NVIDIA's Triton inference server) lets developers write these kernels in a Python-like DSL (domain-specific language) using the `@triton.jit` decorator, instead of writing low-level CUDA C++. At runtime, Triton compiles these Python kernel definitions into GPU machine code:
 
 ```
-┌─────────────────────────────────────────────────┐
-│  Layer 1: RESOURCE ALLOCATION (Slurm)           │
-│  "Which nodes and GPUs do I get?"               │
-│  Same for training and inference.               │
-│  sbatch → srun                                  │
-├─────────────────────────────────────────────────┤
-│  Layer 2: DISTRIBUTED RUNTIME                   │
-│  "How do the GPUs coordinate with each other?"  │
-│  DIFFERENT for training vs inference.            │
-│  Training: torchrun + PyTorch                   │
-│  Inference: Ray + vLLM                          │
-├─────────────────────────────────────────────────┤
-│  Layer 3: THE ACTUAL WORK                       │
-│  Training: forward pass, backward pass, update  │
-│  Inference: receive request, generate tokens    │
-└─────────────────────────────────────────────────┘
+Triton kernel (Python source in vLLM/PyTorch)
+  → Triton compiler (at runtime, on first use)
+  → PTX (NVIDIA GPU assembly)
+  → CUBIN (GPU binary, cached to disk)
+  → runs on GPU
 ```
 
-Layer 1 (Slurm) is always the same. The interesting difference is Layer 2.
+The compiled binaries are cached to disk (by default `~/.triton/cache`, overridden via `TRITON_CACHE_DIR`) so subsequent startups skip the compilation step.
 
-### Training: Slurm → torchrun → PyTorch
-
-For distributed training, the software stack is:
-
-1. **Slurm** (`sbatch`/`srun`) allocates nodes and launches one process per node
-2. **torchrun** (PyTorch's built-in launcher) spawns 8 GPU processes on each node
-3. **PyTorch FSDP** handles the distributed training logic — sharding model weights, synchronizing gradients across all 16 GPUs via NCCL over InfiniBand
-
-The key: **PyTorch has its own distributed runtime built in** (`torch.distributed`). It uses NCCL (NVIDIA's GPU communication library) to move data between GPUs. It doesn't need any external framework — torchrun sets up the coordination, and PyTorch handles everything from there.
-
-```bash
-# Training launch: Slurm → torchrun → PyTorch
-srun torchrun --nnodes=2 --nproc_per_node=8 train.py
-```
-
-Each of the 16 processes is equal — they all do the same work (forward pass, backward pass, gradient sync) on different data. The communication pattern is **symmetric**: every GPU talks to every other GPU in the same way.
-
-### Inference: Slurm → Ray → vLLM
-
-For distributed inference, the software stack is:
-
-1. **Slurm** (`sbatch`/`srun`) allocates nodes — same as training
-2. **Ray** (a separate distributed computing framework) creates a cluster across the nodes
-3. **vLLM** connects to the Ray cluster and distributes model layers across all GPUs
-
-The key: **vLLM does not use PyTorch's built-in distributed runtime**. Instead, it uses Ray because inference has fundamentally different coordination needs:
-
-- An inference server must handle **incoming HTTP requests** and route them to GPU workers
-- It must manage a **KV cache** (memory that stores previously computed attention values so the model doesn't recompute them for every new token) across multiple GPUs
-- It must do **dynamic batching** (grouping multiple requests together to process them more efficiently, even when they arrive at different times)
-- Workers are **asymmetric**: there's a scheduler that decides which GPU handles which request, unlike training where every GPU does the same thing
-
-Ray provides the infrastructure for this kind of coordination. PyTorch's `torch.distributed` was designed for training's symmetric all-reduce patterns, not for inference's request-routing patterns.
-
-```bash
-# Inference launch: Slurm → Ray → vLLM
-ray start --head           # on node 1
-ray start --address=...    # on node 2
-python -m vllm ... --tensor-parallel-size 8 --pipeline-parallel-size 2
-```
-
-### Side-by-Side Comparison
-
-| | Training | Inference |
-|---|---|---|
-| **Slurm's role** | Allocate 2 nodes × 8 GPUs | Allocate 2 nodes × 8 GPUs |
-| **Distributed runtime** | torchrun + PyTorch (`torch.distributed`) | Ray |
-| **GPU communication** | NCCL (via PyTorch) | NCCL (via Ray/vLLM) |
-| **Process model** | 16 equal workers, all doing the same thing on different data | 1 scheduler + 16 GPU workers, handling different requests |
-| **Communication pattern** | Symmetric — all-reduce, all-gather (every GPU sends to every GPU) | Asymmetric — scheduler routes requests, GPUs do tensor/pipeline parallel |
-| **Why not just use Slurm?** | You *can* — torchrun is just a launcher, not a framework. `srun` alone could work with the right env vars. | You *can't* — vLLM needs Ray's actor model for worker management, KV cache coordination, and request scheduling. Slurm can't provide that. |
-| **Extra dependency** | None beyond PyTorch | Ray (must be installed and started as a cluster) |
-
-### The Short Version
-
-**Slurm is the bouncer** — it decides who gets in (which nodes/GPUs your job gets). **The distributed runtime is the crew inside** — for training, PyTorch's built-in crew (torchrun + FSDP) handles everything. For inference, vLLM brings its own crew (Ray) because serving requests is a fundamentally different job than training a model. You always need the bouncer (Slurm), but the crew changes depending on the task.
+Triton kernels are part of the **software stack**, not the model data. vLLM ships its own specialized Triton kernels for inference-specific operations like **paged attention** (efficient KV cache management) that don't exist in standard PyTorch. PyTorch itself also uses Triton kernels internally (e.g., for `torch.compile` optimizations). The model data (safetensors files) is just weights — numbers. The kernels are the code that *operates on* those numbers. The same kernels work for any model of the same architecture.
